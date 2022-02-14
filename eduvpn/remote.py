@@ -5,6 +5,8 @@ import json
 import requests
 from requests_oauthlib import OAuth2Session
 
+from eduvpncommon.discovery import GetOrganizationsList, GetServersList
+
 from eduvpn.crypto import common_name_from_cert
 from eduvpn.crypto import validate
 
@@ -62,7 +64,7 @@ def oauth_request(oauth: OAuth2Session, uri: str, method: str = 'get'):
 
 def list_organisations(uri: str) -> List[Dict[str, Any]]:
     try:
-        result = request(uri, verify=True)['organization_list']
+        result = GetOrganizationsList()['organization_list']
     except Exception as e:
         logger.error(f"Got exception {e} requesting {uri} for organization_list")
         raise
@@ -71,7 +73,7 @@ def list_organisations(uri: str) -> List[Dict[str, Any]]:
 
 def list_servers(uri: str) -> List[Dict[str, Any]]:
     try:
-        result = request(uri, verify=True)['server_list']
+        result = GetServersList()['server_list']
     except Exception as e:
         logger.error(f"Got exception {e} requesting {uri} for server_list")
         raise
