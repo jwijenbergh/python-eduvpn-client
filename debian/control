@@ -1,0 +1,107 @@
+Source: python-eduvpn-client
+Section: python
+Priority: optional
+Maintainer: Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>
+Build-Depends: debhelper (>= 9),
+    dh-python,
+    network-manager-openvpn-gnome,
+    python3-pytest,
+    python3-mock,
+    python3-pytest-runner,
+    python3-all,
+    python3-setuptools,
+    python3-dbus,
+    python3-gi,
+    python3-repoze.lru,
+    python3-sphinx-rtd-theme,
+    python3-sphinx,
+    python3-qrcode,
+    python3-pillow,
+    python3-eduvpn-common
+Standards-Version:  4.5.1
+Homepage: https://github.com/gijzelaerr/python-eduvpn-client
+Vcs-Git: https://github.com/eduvpn-debian/python-eduvpn-client
+Vcs-Browser: https://github.com/eduvpn-debian/python-eduvpn-client
+X-Python3-Version: >= 3.6
+Testsuite: autopkgtest-pkg-python
+
+Package: eduvpn-client-data
+Conflicts: letsconnect-client-data
+Architecture: all
+Depends:
+ ${misc:Depends}
+Description: VPN client for educational networks (data files)
+ EduVPN enables students, employees and researchers to connect securely and
+ encrypted to the Internet from any standard device. EduVPN integrates with
+ the institutional network so that internal ICT services can be made available
+ in a secure manner.
+ .
+ This package installs the data files shared between Python 2 and Python 3
+
+
+Package: python3-eduvpn-client
+Conflicts: python3-letsconnect-client
+Architecture: all
+Depends:
+ ${python3:Depends},
+ ${misc:Depends},
+ eduvpn-client-data,
+ python3-gi,
+ python3-dbus,
+ gir1.2-gtk-3.0,
+ gir1.2-notify-0.7,
+ gir1.2-nm-1.0
+Suggests: eduvpn-client-doc
+Description: eduVPN client (Python 3)
+ EduVPN enables students, employees and researchers to connect securely and
+ encrypted to the Internet from any standard device. EduVPN integrates with
+ the institutional network so that internal ICT services can be made available
+ in a secure manner.
+ .
+ This package installs the library for Python 3.
+
+Package: eduvpn-client-doc
+Conflicts: letsconnect-client-doc
+Architecture: all
+Section: doc
+Depends: ${sphinxdoc:Depends}, ${misc:Depends}
+Description: eduVPN client (common documentation)
+ EduVPN enables students, employees and researchers to connect securely and
+ encrypted to the Internet from any standard device. EduVPN integrates with
+ the institutional network so that internal ICT services can be made available
+ in a secure manner.
+ .
+ This is the common documentation package.
+
+Package: eduvpn-client
+Architecture: all
+Depends:
+ ${misc:Depends},
+ ${python3:Depends},
+ python3-eduvpn-client,
+ network-manager,
+ network-manager-openvpn,
+ network-manager-openvpn-gnome,
+ openvpn
+Description: VPN client for educational networks
+ EduVPN enables students, employees and researchers to connect securely and
+ encrypted to the Internet from any standard device. EduVPN integrates with
+ the institutional network so that internal ICT services can be made available
+ in a secure manner.
+
+Package: letsconnect-client
+Architecture: all
+Depends:
+ ${misc:Depends},
+ ${python3:Depends},
+ python3-eduvpn-client,
+ network-manager,
+ network-manager-openvpn,
+ network-manager-openvpn-gnome,
+ openvpn
+Description: VPN client for educational networks
+ EduVPN enables students, employees and researchers to connect securely and
+ encrypted to the Internet from any standard device. EduVPN integrates with
+ the institutional network so that internal ICT services can be made available
+ in a secure manner.
+

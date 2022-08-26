@@ -1,0 +1,11 @@
+debhelper-build-stamp
+files
+*.substvars
+*.debhelper
+*.debhelper.log
+eduvpn-client/
+python-eduvpn-client/
+letsconnect-client/
+python3-eduvpn-client/
+eduvpn-client-data/
+eduvpn-client-doc/

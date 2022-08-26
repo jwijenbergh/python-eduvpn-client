@@ -1,0 +1,291 @@
+python-eduvpn-client (3.1.0-1) stable; urgency=medium
+
+  [ Gijs Molenaar ]
+  * New upstream version 3.1.0
+
+ -- eduVPN GNU/Linux client packaging key <eduvpn@surf.nl>  Sat, 09 Jul 2022 12:04:24 +0200
+
+python-eduvpn-client (3.0.0-1) stable; urgency=medium
+
+  [ Gijs Molenaar ]
+  * New upstream version 3.0.0
+
+ -- eduVPN GNU/Linux client packaging key <eduvpn@surf.nl>  Mon, 13 Jun 2022 13:48:44 +0200
+
+python-eduvpn-client (2.2.1-1) stable; urgency=medium
+
+  [ Gijs Molenaar ]
+  * New upstream version 2.2.1
+
+ -- eduVPN GNU/Linux client packaging key <eduvpn@surf.nl>  Mon, 21 Feb 2022 12:29:09 +0100
+
+python-eduvpn-client (2.2.0-1) stable; urgency=medium
+
+  [ Gijs Molenaar ]
+  * New upstream version 2.2.0
+
+ -- eduVPN GNU/Linux client packaging key <eduvpn@surf.nl>  Tue, 04 Jan 2022 14:03:55 +0100
+
+python-eduvpn-client (2.1.0-1) stable; urgency=medium
+
+  [ Gijs Molenaar ]
+  * New upstream version 2.1.0
+
+ -- KERN packaging <packaging@kernsuite.info>  Wed, 28 Jul 2021 09:27:32 +0200
+
+python-eduvpn-client (2.0.0-2) stable; urgency=medium
+
+  * address issue #358
+  * add new key
+
+ -- KERN packaging <packaging@kernsuite.info>  Sat, 10 Jul 2021 11:01:01 +0200
+
+python-eduvpn-client (2.0.0-1) stable; urgency=medium
+
+  [ Gijs Molenaar ]
+  * New upstream version 2.0.0
+
+ -- KERN packaging <packaging@kernsuite.info>  Fri, 09 Apr 2021 13:14:16 +0200
+
+python-eduvpn-client (1.1-1) stable; urgency=medium
+
+  [ Gijs Molenaar ]
+  * New upstream version 1.1
+
+ -- KERN packaging <packaging@kernsuite.info>  Tue, 21 Apr 2020 14:57:27 +0200
+
+python-eduvpn-client (1.0.3-1) stable; urgency=medium
+
+  [ Gijs Molenaar ]
+  * New upstream version 1.0.3
+  * Make Python3 only
+
+ -- KERN packaging <packaging@kernsuite.info>  Tue, 04 Feb 2020 14:36:58 +0100
+
+python-eduvpn-client (1.0.2-1) stable; urgency=medium
+
+  [ Gijs Molenaar ]
+  * add conflicts
+  * don't use broken script
+  * New upstream version 1.0.2
+
+ -- KERN packaging <packaging@kernsuite.info>  Mon, 29 Oct 2018 17:26:00 +0100
+
+python-eduvpn-client (1.0.1-1) stable; urgency=medium
+
+  [ Gijs Molenaar ]
+  * New upstream version 1.0.1
+
+ -- KERN packaging <packaging@kernsuite.info>  Mon, 13 Aug 2018 14:39:59 +0200
+
+python-eduvpn-client (1.0rc17-1) stable; urgency=medium
+
+  [ Gijs Molenaar ]
+  * New upstream version 1.0rc17
+
+ -- KERN packaging <packaging@kernsuite.info>  Mon, 13 Aug 2018 14:33:22 +0200
+
+python-eduvpn-client (1.0rc16-1) stable; urgency=medium
+
+  [ Gijs Molenaar ]
+  * add new dependencies
+  * New upstream version 1.0rc16
+
+ -- KERN packaging <packaging@kernsuite.info>  Thu, 26 Jul 2018 17:06:40 +0200
+
+python-eduvpn-client (1.0rc15-1) stable; urgency=medium
+
+  [ Gijs Molenaar ]
+  * New upstream version 1.0rc15
+
+ -- KERN packaging <packaging@kernsuite.info>  Mon, 16 Jul 2018 17:23:11 +0200
+
+python-eduvpn-client (1.0rc14-1) stable; urgency=medium
+
+  [ Gijs Molenaar ]
+  * update changelog
+  * New upstream version 1.0rc14
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Thu, 05 Jul 2018 16:55:35 +0200
+
+python-eduvpn-client (1.0rc12-1) stable; urgency=medium
+
+  [ Gijs Molenaar ]
+  * add network manager dependency to final deb
+  * switch to py3 for sphinx
+  * properly clean
+  * update watch file
+  * New upstream version 1.0rc12
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Thu, 31 May 2018 13:37:46 +0200
+
+python-eduvpn-client (1.0rc11-2) stable; urgency=medium
+
+  * move shared files to data package
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Fri, 20 Oct 2017 10:49:09 +0200
+
+python-eduvpn-client (1.0rc11-1) stable; urgency=medium
+
+  [ Gijs Molenaar ]
+  * New upstream version 1.0rc11
+
+  [ Gijs Molenaar (launchpad ppa build key) ]
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Mon, 16 Oct 2017 15:37:59 +0200
+
+python-eduvpn-client (1.0rc10-1) stable; urgency=medium
+
+  [ Gijs Molenaar ]
+  * New upstream version 1.0rc10
+
+  [ Gijs Molenaar (launchpad ppa build key) ]
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Mon, 16 Oct 2017 13:11:33 +0200
+
+python-eduvpn-client (1.0rc9-2) stable; urgency=medium
+
+  * fix debian lintian errors
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Fri, 13 Oct 2017 13:09:09 +0200
+
+python-eduvpn-client (1.0rc9-1) stable; urgency=medium
+
+  * new upstream release
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Thu, 05 Oct 2017 13:40:57 +0200
+
+python-eduvpn-client (1.0rc8-1) stable; urgency=medium
+
+  * New upstream version 1.0rc8
+  * ignore temp python3 files
+  * include documentation and manpage
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Wed, 04 Oct 2017 15:30:01 +0200
+
+python-eduvpn-client (1.0rc7-1) stable; urgency=medium
+
+  * New upstream version 1.0rc7
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Thu, 21 Sep 2017 18:36:53 +0200
+
+python-eduvpn-client (1.0rc6-1) stable; urgency=medium
+
+  * new upstream release
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Thu, 21 Sep 2017 00:09:07 +0200
+
+python-eduvpn-client (1.0rc5-1) stable; urgency=medium
+
+  * new upstream release
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Tue, 19 Sep 2017 14:46:08 +0200
+
+python-eduvpn-client (1.0rc4-1) stable; urgency=medium
+
+  * new upstream version 1.0rc4
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Tue, 19 Sep 2017 12:58:59 +0200
+
+python-eduvpn-client (1.0rc3-1) stable; urgency=medium
+
+  * New upstream version 1.0rc3
+  * we now also have a python3 package
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Mon, 18 Sep 2017 20:23:14 +0200
+
+python-eduvpn-client (1.0rc2-1) stable; urgency=medium
+
+  * new upstream release
+  * add gir1.2-gtk-3.0 gir1.2-notify-0.7 dependencies
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Sat, 16 Sep 2017 14:02:16 +0200
+
+python-eduvpn-client (1.0rc1-1) stable; urgency=medium
+
+  * New upstream version 1.0rc1
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Fri, 15 Sep 2017 13:18:09 +0200
+
+python-eduvpn-client (0.8-1) stable; urgency=medium
+
+  * New upstream version 0.8
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Thu, 14 Sep 2017 19:55:55 +0200
+
+python-eduvpn-client (0.7.1-1) stable; urgency=medium
+
+  * new upstream release
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Fri, 08 Sep 2017 17:18:04 +0200
+
+python-eduvpn-client (0.7-1) stable; urgency=medium
+
+  [ Gijs Molenaar ]
+  * New upstream version 0.7
+
+  [ Gijs Molenaar (launchpad ppa build key) ]
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Fri, 08 Sep 2017 17:04:40 +0200
+
+python-eduvpn-client (0.6.1-1) stable; urgency=medium
+
+  [ Gijs Molenaar ]
+  * New upstream version 0.6.1
+
+  [ Gijs Molenaar (launchpad ppa build key) ]
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Fri, 01 Sep 2017 17:08:53 +0200
+
+python-eduvpn-client (0.6-1) stable; urgency=medium
+
+  [ Gijs Molenaar ]
+  * New upstream version 0.6
+
+  [ Gijs Molenaar (launchpad ppa build key) ]
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Fri, 01 Sep 2017 15:28:54 +0200
+
+python-eduvpn-client (0.5.1-1) stable; urgency=medium
+
+  * cleanup before build
+  * New upstream version 0.5.1
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Fri, 25 Aug 2017 16:00:57 +0200
+
+python-eduvpn-client (0.5-1) stable; urgency=medium
+
+  * New upstream version 0.5
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Fri, 25 Aug 2017 15:52:34 +0200
+
+python-eduvpn-client (0.3-2) stable; urgency=medium
+
+  * add missing dependencies
+  * fix eduVPN casing
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Fri, 25 Aug 2017 12:47:12 +0200
+
+python-eduvpn-client (0.3-1) stable; urgency=medium
+
+  * New upstream version 0.3
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Thu, 24 Aug 2017 16:48:55 +0200
+
+python-eduvpn-client (0.2.1-1) stable; urgency=medium
+
+  * new upstream release
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Wed, 02 Aug 2017 17:29:32 +0200
+
+python-eduvpn-client (0.1.1-1) stable; urgency=medium
+
+  * new upstream release
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Wed, 26 Jul 2017 15:22:41 +0200
+
+python-eduvpn-client (0.1-1) stable; urgency=medium
+
+  * Initial release
+
+ -- Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>  Mon, 17 Jul 2017 12:33:26 +0200
