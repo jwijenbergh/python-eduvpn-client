@@ -1,7 +1,7 @@
 Source: python-eduvpn-client
 Section: python
 Priority: optional
-Maintainer: Gijs Molenaar (launchpad ppa build key) <gijs@pythonic.nl>
+Maintainer: Jeroen Wijenbergh <jeroen.wijenbergh@geant.org>
 Build-Depends: debhelper (>= 9),
     dh-python,
     network-manager-openvpn-gnome,

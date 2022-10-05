@@ -1,3 +1,10 @@
+python-eduvpn-client (3.2.0-1) stable; urgency=medium
+
+  [ Jeroen Wijenbergh ]
+  * New pre-release version 3.2.0
+
+ -- eduVPN GNU/Linux client packaging key <eduvpn@surf.nl>  Wed, 05 Oct 2022 12:34:00 +0200
+
 python-eduvpn-client (3.1.0-1) stable; urgency=medium
 
   [ Gijs Molenaar ]
