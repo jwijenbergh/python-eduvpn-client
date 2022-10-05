@@ -1,4 +1,3 @@
 share/eduvpn usr/share
 share/letsconnect usr/share
 share/icons usr/share
-debian/eduvpn-client.gpg /etc/apt/trusted.gpg.d
