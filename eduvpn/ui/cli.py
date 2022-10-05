@@ -23,6 +23,7 @@ from eduvpn_common.server import (
 )
 
 import argparse
+import signal
 import sys
 
 
@@ -87,7 +88,7 @@ class CommandLine:
         if len(servers) == 1:
             server = servers[0]
             # TODO: category
-            print(f'One server found: "{str(server)}"')
+            print(f'One server found: "{str(server)}" ({server.category})')
             ask = input("Do you want to connect to it (y/n): ")
 
             if ask in ["y", "yes"]:
@@ -100,7 +101,10 @@ class CommandLine:
     def connect_server(self, server):
         def connect(callback=None):
             try:
-                self.app.model.connect(server, callback)
+                @run_in_background_thread('connect')
+                def connect_background():
+                    self.app.model.connect(server, callback)
+                connect_background()
             except Exception as e:
                 print("Error connecting:", e, file=sys.stderr)
                 if callback:
@@ -121,7 +125,7 @@ class CommandLine:
             return self.ask_server_custom()
 
         if self.server_db.configured:
-            answer = input("Do you want to connect to an existing server? (y/n):")
+            answer = input("Do you want to connect to an existing server? (y/n): ")
 
             if answer in ["y", "yes"]:
                 return self.ask_server_input(self.server_db.configured)
@@ -276,19 +280,38 @@ class CommandLine:
             "Available commands: connect, disconnect, remove, status, list, help, quit"
         )
 
-    @run_in_background_thread('subscribe')
-    def subscribe(self):
-        # TODO: Fix this
-        nm.action_with_mainloop(
-            action=lambda callback: self.app.initialize_network(needs_update=False))
+    def update_state(self, initial: bool = False):
+        def update_state_callback(callback):
+            state = nm.get_connection_state()
+            self.app.on_network_update_callback(state, initial)
+
+            # This exits the main loop and gives back control to the CLI
+            callback()
+        nm.action_with_mainloop(update_state_callback)
+
+    def handle_exit(self):
+        def signal_handler(_signal, _frame):
+            if self.app.model.is_oauth_started():
+                self.common.cancel_oauth()
+            self.common.go_back()
+            self.common.deregister()
+            sys.exit(1)
+
+        signal.signal(signal.SIGINT, signal_handler)
 
     def interactive(self, _):
-        #self.subscribe()
+        # Show a title and the help
         print(f"Welcome to the {self.name} interactive commandline")
         self.help_interactive()
         command = ""
         while command != "quit":
+            # Ask for the command to execute
             command = input(f"[{self.name}]: ")
+
+            # Update the state right before we execute
+            self.update_state()
+
+            # Execute the right command
             commands = {
                 "connect": self.connect,
                 "disconnect": self.disconnect,
@@ -301,21 +324,12 @@ class CommandLine:
             func = commands.get(command, self.help_interactive)
             func()
 
-    def initialize(self):
-        uuid = nm.get_existing_configuration_uuid()
-        if uuid:
-            state = nm.get_connection_state()
-
-            if state == nm.ConnectionState.CONNECTED:
-                self.common.set_connected()
-
     def start(self):
-        self.common.register(debug=True)
-        self.initialize()
         parser = argparse.ArgumentParser(
             description=f"The {self.name} command line client"
         )
         parser.set_defaults(func=lambda _: parser.print_usage())
+        parser.add_argument("-d", "--debug", action="store_true", help="enable debugging")
         subparsers = parser.add_subparsers(title="subcommands")
 
         institute_parser = subparsers.add_parser(
@@ -327,29 +341,29 @@ class CommandLine:
         connect_group = connect_parser.add_mutually_exclusive_group(required=True)
         if self.variant.use_predefined_servers:
             connect_group.add_argument(
-                "--search", type=str, help="connect to a server by searching for one"
+                "-s", "--search", type=str, help="connect to a server by searching for one"
             )
             connect_group.add_argument(
-                "--orgid",
+                "-o", "--orgid",
                 type=str,
                 help="connect to a secure internet server using the organisation ID",
             )
             connect_group.add_argument(
-                "--url",
+                "-u", "--url",
                 type=str,
                 help="connect to an institute access server using the URL",
             )
         connect_group.add_argument(
-            "--custom-url", type=str, help="connect to a custom server using the URL"
+            "-c", "--custom-url", type=str, help="connect to a custom server using the URL"
         )
         connect_group.add_argument(
-            "--number",
+            "-n", "--number",
             type=int,
             help="connect to an already configured server using the number. Run the 'list' subcommand to see the currently configured servers with their number",
         )
         if self.variant.use_predefined_servers:
             connect_group.add_argument(
-                "--number-all",
+                "-a", "--number-all",
                 type=int,
                 help="connect to a server using the number for all servers. Run the 'list --all' command to see all the available servers with their number",
             )
@@ -384,8 +398,20 @@ class CommandLine:
         status_parser.set_defaults(func=self.status)
 
         parsed = parser.parse_args()
+
+        # Handle ctrl+c
+        self.handle_exit()
+
+        # Register the common library
+        self.common.register(parsed.debug)
+
+        # Update the state by asking NetworkManager
+        self.update_state(True)
+
+        # Run the command
         parsed.func(parsed)
 
+        # Deregister the library
         self.common.deregister()
 
 
@@ -393,9 +419,9 @@ class CommandLineTransitions:
     def __init__(self, app):
         self.app = app
 
-    @cmd_transition(State.ASK_LOCATION, StateType.Enter)
+    @cmd_transition(State.ASK_LOCATION, StateType.ENTER)
     def on_ask_location(self, old_state: State, locations):
-        print("This secure internet server has the following available locations:")
+        print("This Secure Internet Server has the following available locations:")
         for index, location in enumerate(locations):
             print(f"[{index+1}]: {retrieve_country_name(location)}")
 
@@ -407,9 +433,6 @@ class CommandLineTransitions:
                 if location_index < 1 or location_index > len(locations):
                     print(f"Invalid location choice: {location_index}")
                     continue
-                # FIXME: This should just accept a location instead of the country code
-                # The model should convert this to a location
-                # This needs fixing in the normal GTK UI as well
                 self.app.model.set_secure_location(
                     locations[location_index - 1]
                 )
@@ -417,7 +440,7 @@ class CommandLineTransitions:
             except ValueError:
                 print(f"Input is not a number: {location_nr}")
 
-    @cmd_transition(State.ASK_PROFILE, StateType.Enter)
+    @cmd_transition(State.ASK_PROFILE, StateType.ENTER)
     def on_ask_profile(self, old_state: State, profiles):
         print("This server has multiple profiles.")
         for index, profile in enumerate(profiles.profiles):
@@ -438,7 +461,7 @@ class CommandLineTransitions:
             except ValueError:
                 print(f"Input is not a number: {profile_nr}")
 
-    @cmd_transition(State.OAUTH_STARTED, StateType.Enter)
+    @cmd_transition(State.OAUTH_STARTED, StateType.ENTER)
     def on_oauth_started(self, old_state: State, url: str):
         print(f"Authorization needed. Your browser has been opened with url: {url}")
 

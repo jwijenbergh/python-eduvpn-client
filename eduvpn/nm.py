@@ -255,9 +255,9 @@ def update_connection(
     )
 
 
-def set_connection(client: Client, new_connection: SimpleConnection, callback: Callable, user_only: bool=False) -> None:
+def set_connection(client: Client, new_connection: SimpleConnection, callback: Callable, system_wide: bool=False):
     uuid = get_uuid()
-    new_connection = set_setting_ensure_permissions(new_connection, user_only)
+    new_connection = set_setting_ensure_permissions(new_connection, not system_wide)
     if uuid:
         old_con = client.get_connection_by_uuid(uuid)
         if old_con:
@@ -282,11 +282,11 @@ def save_connection(
     private_key,
     certificate,
     callback=None,
-    user_only=False,
+    system_wide=False,
 ):
     _logger.info("writing configuration to Network Manager")
     new_con = import_ovpn_and_certificate(ovpn, private_key, certificate)
-    set_connection(client, new_con, callback, user_only)
+    set_connection(client, new_con, callback, system_wide)
 
 
 def save_connection_with_config(
@@ -301,7 +301,7 @@ def save_connection_with_config(
     if settings.force_tcp:
         ovpn.force_tcp()
     return save_connection(
-        client, ovpn, private_key, certificate, callback, settings.nm_user_only
+        client, ovpn, private_key, certificate, callback, settings.nm_system_wide
     )
 
 
@@ -310,7 +310,7 @@ def start_openvpn_connection(ovpn: Ovpn, *, callback=None) -> None:
     _logger.info("writing ovpn configuration to Network Manager")
     new_con = import_ovpn(ovpn)
     settings = Configuration.load()
-    set_connection(client, new_con, callback, settings.nm_user_only)
+    set_connection(client, new_con, callback, settings.nm_system_wide)
 
 
 def start_wireguard_connection(
@@ -333,19 +333,23 @@ def start_wireguard_connection(
     dns4 = []
     dns6 = []
     dns_hostnames = []
-    for dns_entry in config["Interface"]["DNS"].split(","):
-        stripped_entry = dns_entry.strip()
-        try:
-            address = ip_address(stripped_entry)
-        # The entry is not an ip but a hostname
-        # They need to be added to dns search domains
-        except ValueError:
-            dns_hostnames.append(stripped_entry)
-        else:
-            if address.version == 4:
-                dns4.append(str(address))
-            elif address.version == 6:
-                dns6.append(str(address))
+
+    # DNS entries are not required
+    dns_entries = config['Interface'].get('DNS')
+    if dns_entries:
+        for dns_entry in dns_entries.split(','):
+            stripped_entry = dns_entry.strip()
+            try:
+                address = ip_address(stripped_entry)
+            # The entry is not an ip but a hostname
+            # They need to be added to dns search domains
+            except ValueError:
+                dns_hostnames.append(stripped_entry)
+            else:
+                if address.version == 4:
+                    dns4.append(str(address))
+                elif address.version == 6:
+                    dns6.append(str(address))
 
     profile = NM.SimpleConnection.new()
     s_con = NM.SettingConnection.new()
@@ -393,7 +397,7 @@ def start_wireguard_connection(
     profile.add_setting(w_con)
 
     settings = Configuration.load()
-    set_connection(client, profile, callback, settings.nm_user_only)
+    set_connection(client, profile, callback, settings.nm_system_wide)
 
 
 def get_cert_key(client: "NM.Client", uuid: str) -> Tuple[str, str]:

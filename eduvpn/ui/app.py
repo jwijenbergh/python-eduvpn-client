@@ -13,6 +13,7 @@ from eduvpn.app import Application
 from eduvpn.utils import run_in_background_thread, ui_transition
 from eduvpn.variants import ApplicationVariant
 from eduvpn.ui.ui import EduVpnGtkWindow
+from eduvpn.ui.utils import get_validity_text
 from gi.repository.Gio import ApplicationCommandLine
 from typing import Any
 
@@ -26,7 +27,6 @@ LOG_FORMAT = format_ = (
 
 
 class EduVpnGtkApplication(Gtk.Application):
-    # TODO: Go type hint
     def __init__(
         self, *args, app_variant: ApplicationVariant, common: EduVPN, **kwargs
     ) -> None:
@@ -40,6 +40,7 @@ class EduVpnGtkApplication(Gtk.Application):
         self.app = Application(app_variant, common)
         self.common = common
         self.common.register_class_callbacks(self)
+        self.debug = False
         # Only allow a single window and track it on the app.
         self.window = None
 
@@ -93,7 +94,9 @@ class EduVpnGtkApplication(Gtk.Application):
             print(f"eduVPN Linux client version {__version__}")
             return 0
 
-        if "debug" in options:
+        self.debug = "debug" in options
+
+        if self.debug:
             log_level = logging.DEBUG
         else:
             log_level = logging.INFO
@@ -127,7 +130,7 @@ class EduVpnGtkApplication(Gtk.Application):
             ),
         )
 
-    @ui_transition(State.CONNECTING, StateType.Enter)
+    @ui_transition(State.CONNECTING, StateType.ENTER)
     def enter_ConnectingState(self, old_state, new_state):
         self.connection_notification.show(
             title=_("Connecting"),
@@ -137,7 +140,7 @@ class EduVpnGtkApplication(Gtk.Application):
             ),
         )
 
-    @ui_transition(State.CONNECTED, StateType.Enter)
+    @ui_transition(State.CONNECTED, StateType.ENTER)
     def enter_ConnectedState(self, old_state, new_state):
         self.connection_notification.show(
             title=_("Connected"), message=_("You are now connected to your server.")
@@ -152,11 +155,14 @@ class EduVpnGtkApplication(Gtk.Application):
             ),
         )
 
-    @ui_transition(State.DISCONNECTED, StateType.Enter)
-    def enter_DisconnectedState(self, old_state, new_state):
-        # TODO: Show if disconnected due to expiry
+    @ui_transition(State.DISCONNECTED, StateType.ENTER)
+    def enter_DisconnectedState(self, old_state, server):
+        is_expired, _text = get_validity_text(self.app.model.get_expiry(server.expire_time))
+        reason = ""
+        if is_expired:
+            reason = " due to expiry"
         self.connection_notification.show(
-            title=_("Disconnected"), message=_("You are now disconnected from your server.")
+            title=_("Disconnected"), message=_(f"You have been disconnected from your server{reason}.")
         )
 
     def enter_SessionExpiredState(self):
@@ -170,14 +176,7 @@ class EduVpnGtkApplication(Gtk.Application):
 
         expired_deactivate()
 
-    # TODO: Implement with Go callback
-    def enter_ConnectionErrorState(self, old_state, new_state):
-        message = _("An error occured")
-        if new_state.error:
-            message = f"{message}: {new_state.error}"
-        self.connection_notification.show(title=_("Connection Error"), message=message)
-
-    @ui_transition(State.DISCONNECTED, StateType.Enter)
+    @ui_transition(State.DISCONNECTED, StateType.ENTER)
     def enter_NoActiveConnection(self, old_state, new_state):
         if not self.window.is_visible():
             # Quit the app if no window is open when the connection is deactivated.

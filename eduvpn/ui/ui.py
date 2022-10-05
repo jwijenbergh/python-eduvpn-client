@@ -29,7 +29,7 @@ from eduvpn.utils import (ERROR_STATE, get_prefix, get_ui_state, run_in_main_gtk
                      run_periodically, ui_transition)
 from eduvpn.ui import search
 from eduvpn.ui.stats import NetworkStats
-from eduvpn.ui.utils import get_validity_text, link_markup, show_error_dialog, show_ui_component
+from eduvpn.ui.utils import get_validity_text, link_markup, show_error_dialog, show_ui_component, style_tree_view, style_widget
 from datetime import datetime
 from gi.overrides.Gdk import Event, EventButton
 from gi.overrides.Gtk import Box, Builder, Button, TreePath, TreeView, TreeViewColumn
@@ -50,14 +50,6 @@ def get_flag_path(country_code: str) -> Optional[str]:
 
 def get_template_path(filename: str) -> str:
     return os.path.join(get_prefix(), "share/eduvpn/builder", filename)
-
-
-def style_widget(widget: Gtk.Widget, class_name: str, style: str):
-    style_context = widget.get_style_context()
-    provider = Gtk.CssProvider.new()
-    provider.load_from_data(f".{class_name} {{{style}}}".encode("utf-8"))
-    style_context.add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
-    style_context.add_class(class_name)
 
 
 class EduVpnGtkWindow(Gtk.ApplicationWindow):
@@ -95,7 +87,7 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
             "on_acknowledge_error": self.on_acknowledge_error,
             "on_renew_session_clicked": self.on_renew_session_clicked,
             "on_config_force_tcp": self.on_config_force_tcp,
-            "on_config_nm_user_only": self.on_config_nm_user_only,
+            "on_config_nm_system_wide": self.on_config_nm_system_wide,
             "on_close_window": self.on_close_window,
         }
         builder.connect_signals(handlers)
@@ -114,9 +106,13 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         self.secure_internet_list_header = builder.get_object("secureInternetHeader")
         self.other_server_list_header = builder.get_object("otherServersHeader")
 
-        self.institute_list = builder.get_object("instituteTreeView")
-        self.secure_internet_list = builder.get_object("secureInternetTreeView")
-        self.other_server_list = builder.get_object("otherServersTreeView")
+        self.institute_list = builder.get_object("instituteScrolledView")
+        self.secure_internet_list = builder.get_object("secureInternetScrolledView")
+        self.other_server_list = builder.get_object("otherServersScrolledView")
+
+        self.institute_list_tree = builder.get_object("instituteTreeView")
+        self.secure_internet_list_tree = builder.get_object("secureInternetTreeView")
+        self.other_server_list_tree = builder.get_object("otherServersTreeView")
 
         self.choose_profile_page = builder.get_object("chooseProfilePage")
         self.choose_location_page = builder.get_object("chooseLocationPage")
@@ -134,11 +130,10 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         self.main_overlay = builder.get_object("mainOverlay")
 
         # Create a revealer
-        self.clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
+        self.clipboard = self.create_clipboard()
         self.error_revealer = None
         self.error_revealer_label = None
         self.create_error_revealer()
-        #self.error_revealer.set_has_window(True)
 
         self.add_custom_server_button_container = builder.get_object(
             "addCustomServerRow"
@@ -177,9 +172,9 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         self.oauth_page = builder.get_object("openBrowserPage")
         self.oauth_cancel_button = builder.get_object("cancelBrowserButton")
 
-        self.settings_page = builder.get_object("settingsPage")
-        self.setting_config_force_tcp = builder.get_object("settingConfigForceTCP")
-        self.setting_config_nm_user_only = builder.get_object("settingConfigNMUserOnly")
+        self.settings_page = builder.get_object('settingsPage')
+        self.setting_config_force_tcp = builder.get_object('settingConfigForceTCP')
+        self.setting_config_nm_system_wide = builder.get_object('settingConfigNMSystemWide')
 
         self.loading_page = builder.get_object("loadingPage")
         self.loading_title = builder.get_object("loadingTitle")
@@ -234,7 +229,7 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
             try:
                 self.common.register_class_callbacks(self)
                 self.enter_deregistered()
-                self.common.register(debug=True)
+                self.common.register(debug=self.eduvpn_app.debug)
                 self.exit_deregistered()
                 self.app.initialize_network()
             except Exception as e:
@@ -242,19 +237,26 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
 
         register()
 
+    @run_in_main_gtk_thread
     def enter_deregistered(self):
         self.show_loading_page(
             _("Loading client"),
             _("The client is loading the servers."),
         )
 
+    @run_in_main_gtk_thread
     def exit_deregistered(self):
         self.hide_loading_page()
 
-    @ui_transition(ERROR_STATE, StateType.Enter)
+    @ui_transition(ERROR_STATE, StateType.ENTER)
     def enter_error_state(self, old_state: str, error: str):
         self.show_error_revealer(error)
 
+    @run_in_main_gtk_thread
+    def create_clipboard(self):
+        return Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
+
+    @run_in_main_gtk_thread
     def create_error_revealer(self):
         # Creat the revealer and set the properties
         self.error_revealer = Gtk.Revealer.new()
@@ -378,8 +380,8 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
 
     def enter_settings_page(self) -> None:
         assert not self.is_on_settings_page()
+        self.setting_config_nm_system_wide.set_state(self.app.config.nm_system_wide)
         self.setting_config_force_tcp.set_state(self.app.config.force_tcp)
-        self.setting_config_nm_user_only.set_state(self.app.config.nm_user_only)
         self.page_stack.set_visible_child(self.settings_page)
         self.show_back_button(True)
 
@@ -502,7 +504,7 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
 
     # session state transition callbacks
 
-    @ui_transition(State.CONNECTING, StateType.Enter)
+    @ui_transition(State.CONNECTING, StateType.ENTER)
     def enter_connecting(self, old_state: str, data):
         self.connection_status_label.set_text(_("Connecting..."))
         self.connection_status_image.set_from_file(StatusImage.CONNECTING.path)
@@ -511,13 +513,13 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         self.connection_switch.set_sensitive(False)
         self.select_profile_combo.set_sensitive(False)
 
-    @ui_transition(State.CONNECTING, StateType.Leave)
+    @ui_transition(State.CONNECTING, StateType.LEAVE)
     def exit_connecting(self, old_state: str, data):
         # Re-enable the profile combo box and switch
         self.connection_switch.set_sensitive(True)
         self.select_profile_combo.set_sensitive(True)
 
-    @ui_transition(State.DISCONNECTING, StateType.Enter)
+    @ui_transition(State.DISCONNECTING, StateType.ENTER)
     def enter_disconnecting(self, old_state: str, data):
         self.connection_status_label.set_text(_("Disconnecting..."))
         self.connection_status_image.set_from_file(StatusImage.CONNECTING.path)
@@ -526,7 +528,7 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         self.connection_switch.set_sensitive(False)
         self.select_profile_combo.set_sensitive(False)
 
-    @ui_transition(State.DISCONNECTING, StateType.Leave)
+    @ui_transition(State.DISCONNECTING, StateType.LEAVE)
     def exit_disconnecting(self, old_state: str, data):
         # Re-enable the profile combo box and switch
         self.connection_switch.set_sensitive(True)
@@ -535,10 +537,11 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
     # interface state transition callbacks
 
     # TODO: Implement with Go callback
-    @ui_transition(State.SEARCH_SERVER, StateType.Enter)
+    @ui_transition(State.SEARCH_SERVER, StateType.ENTER)
     def enter_search(self, old_state: str, servers):
+        is_main = len(self.common.get_saved_servers()) == 0
+        self.show_back_button(not is_main)
         self.set_search_text("")
-        self.show_back_button(True)
         self.find_server_search_input.grab_focus()
         search.show_result_components(self, True)
         search.show_search_components(self, True)
@@ -546,7 +549,7 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         search.init_server_search(self)
 
     # TODO: Implement with Go callback
-    @ui_transition(State.SEARCH_SERVER, StateType.Leave)
+    @ui_transition(State.SEARCH_SERVER, StateType.LEAVE)
     def exit_search(self, new_state: str, data: str):
         self.show_back_button(False)
         search.show_result_components(self, False)
@@ -558,7 +561,7 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         if not self.app.variant.use_predefined_servers:
             self.add_custom_server_button_container.hide()
 
-    @ui_transition(State.NO_SERVER, StateType.Enter)
+    @ui_transition(State.NO_SERVER, StateType.ENTER)
     def enter_MainState(self, old_state: str, servers):
         search.show_result_components(self, True)
         self.add_other_server_button_container.show()
@@ -566,60 +569,69 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         search.update_results(self, servers)
         self.change_location_button.show()
 
-    @ui_transition(State.NO_SERVER, StateType.Leave)
+        @run_in_background_thread('set-search-server')
+        def set_search_server():
+            try:
+                self.common.set_search_server()
+            except Exception as e:
+                self.show_error_revealer(str(e))
+
+        if len(servers) == 0:
+            set_search_server()
+
+    @ui_transition(State.NO_SERVER, StateType.LEAVE)
     def exit_MainState(self, old_state, new_state):
         search.show_result_components(self, False)
         self.add_other_server_button_container.hide()
         search.exit_server_search(self)
         self.change_location_button.hide()
 
-    @ui_transition(State.OAUTH_STARTED, StateType.Enter)
+    @ui_transition(State.OAUTH_STARTED, StateType.ENTER)
     def enter_oauth_setup(self, old_state, url):
         self.show_page(self.oauth_page)
         self.oauth_cancel_button.show()
 
     # TODO: Implement with Go callback
-    @ui_transition(State.OAUTH_STARTED, StateType.Leave)
+    @ui_transition(State.OAUTH_STARTED, StateType.LEAVE)
     def exit_oauth_setup(self, old_state, data):
         self.hide_page(self.oauth_page)
         self.oauth_cancel_button.hide()
 
-    @ui_transition(State.AUTHORIZED, StateType.Enter)
+    @ui_transition(State.AUTHORIZED, StateType.ENTER)
     def enter_OAuthRefreshToken(self, new_state, data):
         self.show_loading_page(
             _("Finishing Authorization"),
             _("The authorization token is being finished."),
         )
 
-    @ui_transition(State.AUTHORIZED, StateType.Leave)
+    @ui_transition(State.AUTHORIZED, StateType.LEAVE)
     def exit_OAuthRefreshToken(self, old_state, data):
         self.hide_loading_page()
 
-    @ui_transition(State.CHOSEN_SERVER, StateType.Enter)
+    @ui_transition(State.CHOSEN_SERVER, StateType.ENTER)
     def enter_chosenServerInformation(self, new_state, data):
         self.show_loading_page(
             _("Chosen"),
             _("The server has been chosen and is loading."),
         )
 
-    @ui_transition(State.CHOSEN_SERVER, StateType.Leave)
+    @ui_transition(State.CHOSEN_SERVER, StateType.LEAVE)
     def exit_chosenServerInformation(self, old_state, data):
         self.hide_loading_page()
 
-    @ui_transition(State.LOADING_SERVER, StateType.Enter)
+    @ui_transition(State.LOADING_SERVER, StateType.ENTER)
     def enter_LoadingServerInformation(self, new_state, data):
         self.show_loading_page(
             _("Loading"),
             _("The server details are being loaded."),
         )
 
-    @ui_transition(State.LOADING_SERVER, StateType.Leave)
+    @ui_transition(State.LOADING_SERVER, StateType.LEAVE)
     def exit_LoadingServerInformation(self, old_state, data):
         self.hide_loading_page()
 
-    @ui_transition(State.ASK_PROFILE, StateType.Enter)
+    @ui_transition(State.ASK_PROFILE, StateType.ENTER)
     def enter_ChooseProfile(self, new_state, profiles):
-        self.show_back_button(True)
         self.show_page(self.choose_profile_page)
         self.profile_list.show()
 
@@ -630,22 +642,24 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
             # Only initialize this tree view once.
             text_cell = Gtk.CellRendererText()
             text_cell.set_property("size-points", 14)
+            text_cell.set_property("ypad", 10)
 
             column = Gtk.TreeViewColumn(None, text_cell, text=0)
             profile_tree_view.append_column(column)
 
+        style_tree_view(self, profile_tree_view)
         profile_tree_view.set_model(profiles_list_model)
         profiles_list_model.clear()
         for profile in profiles.profiles:
             profiles_list_model.append([str(profile), profile])
 
-    @ui_transition(State.ASK_PROFILE, StateType.Leave)
+    @ui_transition(State.ASK_PROFILE, StateType.LEAVE)
     def exit_ChooseProfile(self, old_state, data):
         self.show_back_button(False)
         self.hide_page(self.choose_profile_page)
         self.profile_list.hide()
 
-    @ui_transition(State.ASK_LOCATION, StateType.Enter)
+    @ui_transition(State.ASK_LOCATION, StateType.ENTER)
     def enter_ChooseSecureInternetLocation(self, old_state, locations):
         self.show_back_button(True)
         self.show_page(self.choose_location_page)
@@ -660,6 +674,7 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
             # Only initialize this tree view once.
             text_cell = Gtk.CellRendererText()
             text_cell.set_property("size-points", 14)
+            text_cell.set_property("ypad", 10)
 
             renderer_pixbuf = Gtk.CellRendererPixbuf()
             column = Gtk.TreeViewColumn("Image", renderer_pixbuf, pixbuf=1)
@@ -668,6 +683,7 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
             column = Gtk.TreeViewColumn(None, text_cell, text=0)
             location_tree_view.append_column(column)
 
+            style_tree_view(self, location_tree_view)
             location_tree_view.set_model(location_list_model)
 
         location_list_model.clear()
@@ -682,7 +698,7 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
                 flag = GdkPixbuf.Pixbuf.new_from_file(flag_path)
             location_list_model.append([retrieve_country_name(location), flag, location])
 
-    @ui_transition(State.ASK_LOCATION, StateType.Leave)
+    @ui_transition(State.ASK_LOCATION, StateType.LEAVE)
     def exit_ChooseSecureInternetLocation(self, old_state, new_state):
         self.show_back_button(False)
         self.hide_loading_page()
@@ -698,7 +714,7 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
     def exit_ConfiguringConnection(self, old_state: str, data) -> None:
         self.hide_loading_page()
 
-    @ui_transition(State.REQUEST_CONFIG, StateType.Enter)
+    @ui_transition(State.REQUEST_CONFIG, StateType.ENTER)
     def enter_RequestConfig(self, old_state: str, data):
         # TODO: Remove get_ui_state here
         if old_state != get_ui_state(State.DISCONNECTED):
@@ -706,12 +722,12 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         else:
             self.enter_connecting(old_state, data)
 
-    @ui_transition(State.REQUEST_CONFIG, StateType.Leave)
+    @ui_transition(State.REQUEST_CONFIG, StateType.LEAVE)
     def exit_RequestConfig(self, old_state: str, data):
         self.exit_ConfiguringConnection(old_state, data)
 
     # TODO: Implement with Go callback
-    @ui_transition(State.DISCONNECTED, StateType.Enter)
+    @ui_transition(State.DISCONNECTED, StateType.ENTER)
     def enter_ConnectionStatus(self, old_state: str, server_info):
         self.show_back_button(True)
         self.stop_validity_renew()
@@ -720,14 +736,14 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         self.update_connection_status(False)
         self.update_connection_server(server_info)
 
-    @ui_transition(State.DISCONNECTED, StateType.Leave)
+    @ui_transition(State.DISCONNECTED, StateType.LEAVE)
     def exit_ConnectionStatus(self, old_state, new_state):
         self.show_back_button(False)
         self.hide_page(self.connection_page)
         self.pause_connection_info()
 
     # TODO: Implement with Go callback
-    @ui_transition(State.CONNECTED, StateType.Enter)
+    @ui_transition(State.CONNECTED, StateType.ENTER)
     def enter_ConnectedState(self, old_state, server_info):
         self.show_page(self.connection_page)
         self.show_back_button(False)
@@ -866,6 +882,10 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         if event.type != Gdk.EventType.BUTTON_PRESS:
             return
 
+        # Not in the main screen
+        if not self.app.model.is_no_server():
+            return
+
         # Not a right click
         if event.button != 3:
             return
@@ -889,18 +909,6 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
 
         menu = Gtk.Menu()
         menu.append(remove_item)
-
-        # TODO: let server contain the profiles and change this if to:
-        # if len(server.profiles) > 0
-        if True:
-            change_profile = Gtk.ImageMenuItem.new_from_stock(stock_id=Gtk.STOCK_EDIT)
-            change_profile.connect(
-                "activate", lambda _: self.server_change_profile(server)
-            )
-            change_profile.set_always_show_image(True)
-            change_profile.set_label("Change profile")
-            change_profile.show()
-            menu.append(change_profile)
 
         menu.append(cancel_item)
         menu.attach_to_widget(widget)
@@ -1121,9 +1129,9 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         logger.debug("clicked on setting: 'force tcp'")
         self.app.config.force_tcp = state
 
-    def on_config_nm_user_only(self, _switch: Switch, state: bool) -> None:
-        logger.debug("clicked on setting: 'nm user only'")
-        self.app.config.nm_user_only = state
+    def on_config_nm_system_wide(self, switch, state: bool):
+        logger.debug("clicked on setting: 'nm system wide'")
+        self.app.config.nm_system_wide = state
 
     def on_close_window(self, window: "EduVpnGtkWindow", event: Event) -> bool:
         logger.debug("clicked on close window")

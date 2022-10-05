@@ -5,7 +5,7 @@ from typing import Union, Dict, Iterable, List, Optional
 from eduvpn_common.discovery import DiscoServer, DiscoOrganization
 from eduvpn_common.server import Server, InstituteServer, SecureInternetServer
 from eduvpn.i18n import retrieve_country_name
-from eduvpn.ui.utils import show_ui_component
+from eduvpn.ui.utils import show_ui_component, style_tree_view
 from gi.overrides.Gtk import ListStore
 
 
@@ -15,10 +15,16 @@ class ServerGroup(enum.Enum):
     OTHER = enum.auto()
 
 
-group_tree_component = {
+group_scroll_component = {
     ServerGroup.INSTITUTE_ACCESS: "institute_list",
     ServerGroup.SECURE_INTERNET: "secure_internet_list",
     ServerGroup.OTHER: "other_server_list",
+}
+
+group_tree_component = {
+    ServerGroup.INSTITUTE_ACCESS: "institute_list_tree",
+    ServerGroup.SECURE_INTERNET: "secure_internet_list_tree",
+    ServerGroup.OTHER: "other_server_list_tree",
 }
 
 group_header_component = {
@@ -94,6 +100,9 @@ def show_group_tree(window: 'EduVpnGtkWindow', group: ServerGroup, show: bool) -
     """
     Set the visibility of the tree of result for a server type.
     """
+    scroll_component_name = group_scroll_component[group]
+    scroll_component = getattr(window, scroll_component_name)
+    show_ui_component(scroll_component, show)
     tree_component_name = group_tree_component[group]
     tree_component = getattr(window, tree_component_name)
     show_ui_component(tree_component, show)
@@ -108,6 +117,7 @@ def init_server_search(window: 'EduVpnGtkWindow') -> None:  # type: ignore
     text_cell = Gtk.CellRendererText()
     text_cell.props.ellipsize = Pango.EllipsizeMode.END
     text_cell.set_property("size-points", 14)
+    text_cell.set_property("ypad", 10)
     for group in group_tree_component:
         component_name = group_tree_component[group]
         tree_view = getattr(window, component_name)
@@ -116,12 +126,15 @@ def init_server_search(window: 'EduVpnGtkWindow') -> None:  # type: ignore
             column = Gtk.TreeViewColumn("", text_cell, text=0)
             tree_view.append_column(column)
         model = get_group_model(group)
-        tree_view.set_model(model)
+        sorted_model = Gtk.TreeModelSort(model=model)
+        sorted_model.set_sort_column_id(0, Gtk.SortType.ASCENDING)
+        style_tree_view(window, tree_view)
+        tree_view.set_model(sorted_model)
 
 
 def exit_server_search(window: 'EduVpnGtkWindow') -> None:  # type: ignore
     "Hide the search page components."
-    for group in group_tree_component:
+    for group in group_scroll_component:
         show_group_tree(window, group, False)
     show_search_results(window, False)
 
@@ -152,7 +165,7 @@ def update_results(window: 'EduVpnGtkWindow', servers) -> None:  # type: ignore
         show_search_results(window, False)
         return
     server_map = group_servers(servers)
-    for group in group_tree_component:
+    for group in group_scroll_component:
         update_search_results_for_type(
             window,
             group,

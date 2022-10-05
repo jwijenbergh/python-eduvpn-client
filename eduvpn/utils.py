@@ -95,7 +95,7 @@ def model_transition(state: State, state_type: StateType) -> Callable:
                 # Log as info as we're already giving the error in the UI
                 logger.info(e)
                 # Run the error state event
-                self.common.event.run(get_ui_state(ERROR_STATE), get_ui_state(ERROR_STATE), str(e))
+                self.common.event.run(get_ui_state(ERROR_STATE), get_ui_state(ERROR_STATE), str(e), convert=False)
 
                 # Go back to the previous state as the model transition was not successful
                 self.common.go_back()
@@ -104,7 +104,7 @@ def model_transition(state: State, state_type: StateType) -> Callable:
             other_ui_state = get_ui_state(other_state)
             ui_state = get_ui_state(state)
             # We can then pass it to the UI
-            if state_type == StateType.Enter:
+            if state_type == StateType.ENTER:
                 self.common.event.run(other_ui_state, ui_state, model_converted, convert=False)
             else:
                 self.common.event.run(ui_state, other_ui_state, model_converted, convert=False)

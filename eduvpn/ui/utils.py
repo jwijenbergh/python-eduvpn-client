@@ -9,6 +9,31 @@ from gi.repository import Gtk
 from gi.overrides.Gtk import Widget
 from typing import Tuple
 
+
+@run_in_main_gtk_thread
+def style_widget(widget: Gtk.Widget, class_name: str, style: str):
+    style_context = widget.get_style_context()
+    provider = Gtk.CssProvider.new()
+    provider.load_from_data(f".{class_name} {{{style}}}".encode("utf-8"))
+    style_context.add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+    style_context.add_class(class_name.split(":")[0])
+
+
+@run_in_main_gtk_thread
+def style_tree_view(window, tree_view):
+    # Get the background from the window to 'blend' the tree view
+    style_context = window.get_style_context()
+    background = style_context.get_background_color(Gtk.StateFlags.NORMAL).to_string()
+    # grayish
+    bordercolor = "#B2BEB5"
+    # Organgeish in the style of the eduVPN logo
+    background_hl = "#E24301"
+    # Plain white
+    textcolor_hl = "#ffffff"
+    style_widget(tree_view, "TreeView", f"background-color: {background}; border-top-color: {bordercolor};")
+    style_widget(tree_view, "TreeView:hover", f"color: {textcolor_hl}; background-color: {background_hl}; border-top-color: {bordercolor}")
+
+
 def get_validity_text(validity: Validity) -> Tuple[bool, str]:
     if validity is None:
         return (False, _(f"Valid for: <b>unknown</b>"))
@@ -47,6 +72,7 @@ def get_validity_text(validity: Validity) -> Tuple[bool, str]:
         return (False, (dstr + hstr))
 
 
+@run_in_main_gtk_thread
 def show_ui_component(component: Widget, show: bool) -> None:
     """
     Set the visibility of a UI component.
@@ -68,6 +94,7 @@ def link_markup(link: str) -> str:
         return f'<a href="{link}">{rest}</a>'
 
 
+@run_in_main_gtk_thread
 def show_error_dialog(parent, name: str, title: str, message: str, only_quit: bool = False):
     dialog = Gtk.MessageDialog(  # type: ignore
         parent=parent,

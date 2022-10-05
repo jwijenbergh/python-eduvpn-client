@@ -1,11 +1,11 @@
 import logging
 import webbrowser
 from datetime import datetime, timedelta
-from typing import Any, Callable, Iterator, Union, Optional
-
-from eduvpn_common.server import Profile, Server, InstituteServer, SecureInternetServer
+from typing import Any, Callable, Iterator, Optional
+from eduvpn_common.error import WrappedError, ErrorLevel
 from eduvpn_common.discovery import DiscoOrganization, DiscoServer
 from eduvpn_common.main import EduVPN
+from eduvpn_common.server import Server, InstituteServer, SecureInternetServer
 from eduvpn_common.state import State, StateType
 from eduvpn.server import ServerDatabase
 
@@ -13,7 +13,6 @@ from eduvpn.connection import Connection
 
 from eduvpn import nm
 from eduvpn.config import Configuration
-from eduvpn.i18n import extract_translation, retrieve_country_name
 from eduvpn.utils import (model_transition, run_in_background_thread,
                     run_in_main_gtk_thread)
 from eduvpn.variants import ApplicationVariant
@@ -52,49 +51,49 @@ class ApplicationModelTransitions:
         self.current_server = None
         self.server_db = ServerDatabase(common)
 
-    @model_transition(State.NO_SERVER, StateType.Enter)
+    @model_transition(State.NO_SERVER, StateType.ENTER)
     def get_previous_servers(self, old_state: str, servers):
         return servers
 
-    @model_transition(State.SEARCH_SERVER, StateType.Enter)
+    @model_transition(State.SEARCH_SERVER, StateType.ENTER)
     def parse_discovery(self, old_state: str, _):
         return self.server_db.disco
 
-    @model_transition(State.LOADING_SERVER, StateType.Enter)
+    @model_transition(State.LOADING_SERVER, StateType.ENTER)
     def loading_server(self, old_state: str, data: str):
         return data
 
-    @model_transition(State.CHOSEN_SERVER, StateType.Enter)
+    @model_transition(State.CHOSEN_SERVER, StateType.ENTER)
     def chosen_server(self, old_state: str, data: str):
         return data
 
-    @model_transition(State.DISCONNECTING, StateType.Enter)
+    @model_transition(State.DISCONNECTING, StateType.ENTER)
     def disconnecting(self, old_state: str, server):
         self.current_server = server
         return server
 
-    @model_transition(State.ASK_PROFILE, StateType.Enter)
+    @model_transition(State.ASK_PROFILE, StateType.ENTER)
     def parse_profiles(self, old_state: str, profiles):
         return profiles
 
-    @model_transition(State.ASK_LOCATION, StateType.Enter)
+    @model_transition(State.ASK_LOCATION, StateType.ENTER)
     def parse_locations(self, old_state: str, locations: List[str]):
         return locations
 
-    @model_transition(State.AUTHORIZED, StateType.Enter)
+    @model_transition(State.AUTHORIZED, StateType.ENTER)
     def authorized(self, old_state: str, data: str):
         return data
 
-    @model_transition(State.OAUTH_STARTED, StateType.Enter)
+    @model_transition(State.OAUTH_STARTED, StateType.ENTER)
     def start_oauth(self, old_state: str, url: str):
         self.open_browser(url)
         return url
 
-    @model_transition(State.REQUEST_CONFIG, StateType.Enter)
+    @model_transition(State.REQUEST_CONFIG, StateType.ENTER)
     def parse_request_config(self, old_state: str, data: str):
         return data
 
-    @model_transition(State.DISCONNECTED, StateType.Enter)
+    @model_transition(State.DISCONNECTED, StateType.ENTER)
     def parse_config(self, old_state: str, server):
         self.current_server = server
         return server
@@ -103,12 +102,12 @@ class ApplicationModelTransitions:
     def open_browser(self, url):
         webbrowser.open(url)
 
-    @model_transition(State.CONNECTED, StateType.Enter)
+    @model_transition(State.CONNECTED, StateType.ENTER)
     def parse_connected(self, old_state: str, server):
         self.current_server = server
         return server
 
-    @model_transition(State.CONNECTING, StateType.Enter)
+    @model_transition(State.CONNECTING, StateType.ENTER)
     def parse_connecting(self, old_state: str, server):
         self.current_server = server
         return server
@@ -168,8 +167,10 @@ class ApplicationModel:
                 config, config_type = self.common.get_config_secure_internet(server.org_id)
             elif isinstance(server, Server):
                 config, config_type = self.common.get_config_custom_server(server.url)
-        except Exception as e:
-            raise e
+        except WrappedError as e:
+            if e.level != ErrorLevel.ERR_INFO:
+                raise e
+            return
 
         def on_connected():
             self.common.set_connected()
@@ -254,11 +255,17 @@ class ApplicationModel:
     def search_custom(self, query: str) -> Iterator[Any]:
         return self.server_db.search_custom(query)
 
-    def is_connected(self) -> int:
+    def is_no_server(self) -> bool:
+        return self.common.in_fsm_state(State.NO_SERVER)
+
+    def is_connected(self) -> bool:
         return self.common.in_fsm_state(State.CONNECTED)
 
-    def is_disconnected(self):
+    def is_disconnected(self) -> bool:
         return self.common.in_fsm_state(State.DISCONNECTED)
+
+    def is_oauth_started(self) -> bool:
+        return self.common.in_fsm_state(State.OAUTH_STARTED)
 
 
 class Application:
@@ -285,6 +292,7 @@ class Application:
         except:
             return
 
+    @run_in_main_gtk_thread
     def initialize_network(self, needs_update=True) -> None:
         """
         Determine the current network state.
@@ -295,7 +303,7 @@ class Application:
             self.on_network_update_callback(nm.get_connection_state(), needs_update)
 
         @run_in_background_thread("on-network-update")
-        def update(state, initial):
-            self.on_network_update_callback(state, initial)
+        def update(state):
+            self.on_network_update_callback(state, False)
 
         nm.subscribe_to_status_changes(update)
