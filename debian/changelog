@@ -1,4 +1,4 @@
-python-eduvpn-client (3.2.0-1) UNRELEASED; urgency=medium
+python-eduvpn-client (3.2.0-1) stable; urgency=medium
 
   * New version with Go
 
