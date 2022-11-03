@@ -3,7 +3,7 @@ from glob import glob
 
 from setuptools import setup, find_packages
 
-__version__ = "3.2.0"
+__version__ = "3.1.0"
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
@@ -93,8 +93,8 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            'eduvpn-cli = eduvpn.ui.cli:eduvpn',
-            'letsconnect-cli = eduvpn.ui.cli:letsconnect',
+            'eduvpn-cli = eduvpn.cli:eduvpn',
+            'letsconnect-cli = eduvpn.cli:letsconnect',
         ],
         'gui_scripts': [
             'eduvpn-gui = eduvpn.ui.__main__:eduvpn',

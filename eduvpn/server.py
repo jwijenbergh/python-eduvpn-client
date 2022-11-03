@@ -1,11 +1,9 @@
 import enum
 import logging
-import os
-from typing import Dict, Iterable, List, Optional, Union
+from typing import Dict, Iterable, List, Union
 
 from eduvpn_common.server import Server
-from eduvpn.i18n import retrieve_country_name
-from eduvpn.settings import FLAG_PREFIX, IMAGE_PREFIX
+from eduvpn.settings import IMAGE_PREFIX
 
 logger = logging.getLogger(__name__)
 TranslatedStr = Union[str, Dict[str, str]]
@@ -36,11 +34,14 @@ def is_search_match(server, query: str) -> bool:
 
 
 class ServerDatabase:
-    def __init__(self, common) -> None:
+    def __init__(self, common, enable_discovery=True) -> None:
         self.common = common
+        self.enable_discovery = enable_discovery
 
     @property
     def disco(self):
+        if not self.enable_discovery:
+            return []
         disco_orgs = self.common.get_disco_organizations()
         disco_servers = self.common.get_disco_servers()
         all_servers = disco_orgs.organizations

@@ -3,7 +3,6 @@ import json
 import locale
 import logging
 import os
-from typing import Dict, Union
 
 from eduvpn.settings import COUNTRY, COUNTRY_MAP, LANGUAGE
 from eduvpn.utils import get_prefix
@@ -39,7 +38,6 @@ def setup(app_variant: ApplicationVariant, prefix: str):
     return domain
 
 
-# TODO: rename to language_tag and pass to library
 def country() -> str:
     try:
         locale_setting = locale.getlocale()[0]

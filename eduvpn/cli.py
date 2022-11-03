@@ -1,9 +1,8 @@
-import readline
 import eduvpn_common.main as common
 from eduvpn_common.state import State, StateType
 
 from eduvpn.app import Application
-from eduvpn.i18n import retrieve_country_name
+from eduvpn.i18n import country, retrieve_country_name
 from eduvpn.settings import (
     CLIENT_ID,
     CONFIG_PREFIX,
@@ -11,16 +10,12 @@ from eduvpn.settings import (
     LETSCONNECT_CONFIG_PREFIX,
 )
 from eduvpn.utils import cmd_transition, run_in_background_thread
-from eduvpn.ui.search import group_servers, ServerGroup, update_results
+from eduvpn.ui.search import ServerGroup, group_servers
 from eduvpn.ui.utils import get_validity_text
 import eduvpn.nm as nm
 from eduvpn.server import ServerDatabase
 from eduvpn.variants import EDUVPN, LETS_CONNECT, ApplicationVariant
-from eduvpn_common.server import (
-        Server,
-        InstituteServer,
-        SecureInternetServer
-)
+from eduvpn_common.server import Server, InstituteServer, SecureInternetServer
 
 import argparse
 import signal
@@ -44,9 +39,20 @@ class CommandLine:
         self.variant = variant
         self.common = common
         self.app = Application(variant, common)
-        self.server_db = ServerDatabase(common)
+        self.nm_manager = self.app.nm_manager
+        self.server_db = ServerDatabase(common, variant.use_predefined_servers)
         self.transitions = CommandLineTransitions(self.app)
         self.common.register_class_callbacks(self.transitions)
+
+    def ask_yes(self, label) -> bool:
+        while True:
+            yesno = input(label)
+
+            if yesno in ["y", "yes"]:
+                return True
+            if yesno in ["n", "no"]:
+                return False
+            print(f'Input "{yesno}" is not valid')
 
     def ask_server_input(self, servers, fallback_search=False):
         print("Multiple servers found:")
@@ -87,11 +93,10 @@ class CommandLine:
 
         if len(servers) == 1:
             server = servers[0]
-            # TODO: category
             print(f'One server found: "{str(server)}" ({server.category})')
-            ask = input("Do you want to connect to it (y/n): ")
+            is_yes = self.ask_yes("Do you want to connect to it (y/n): ")
 
-            if ask in ["y", "yes"]:
+            if is_yes:
                 return servers[0]
             else:
                 return None
@@ -101,9 +106,12 @@ class CommandLine:
     def connect_server(self, server):
         def connect(callback=None):
             try:
-                @run_in_background_thread('connect')
+
+                @run_in_background_thread("connect")
                 def connect_background():
-                    self.app.model.connect(server, callback)
+                    # Connect to the server and ensure it exists
+                    self.app.model.connect(server, callback, ensure_exists=True)
+
                 connect_background()
             except Exception as e:
                 print("Error connecting:", e, file=sys.stderr)
@@ -125,9 +133,11 @@ class CommandLine:
             return self.ask_server_custom()
 
         if self.server_db.configured:
-            answer = input("Do you want to connect to an existing server? (y/n): ")
+            is_yes = self.ask_yes(
+                "Do you want to connect to an existing server? (y/n): "
+            )
 
-            if answer in ["y", "yes"]:
+            if is_yes:
                 return self.ask_server_input(self.server_db.configured)
 
         servers = self.server_db.disco
@@ -146,7 +156,9 @@ class CommandLine:
         elif url:
             server = InstituteServer(url, "Institute Server", [], None, 0)
         elif org_id:
-            server = SecureInternetServer(org_id, "Organisation Server", [], None, 0, "nl")
+            server = SecureInternetServer(
+                org_id, "Organisation Server", [], None, 0, "nl"
+            )
         elif custom_url:
             server = Server(custom_url, "Custom Server")
         elif number is not None:
@@ -168,8 +180,7 @@ class CommandLine:
             return False
 
         current = self.app.model.current_server
-        # TODO: Category string
-        print(f"Connected to: {str(current)}")
+        print(f'Connected to: "{str(current)}" ({current.category})')
         expiry = self.app.model.current_server.expire_time
         valid_for = (
             get_validity_text(self.app.model.get_expiry(expiry))[1]
@@ -282,11 +293,12 @@ class CommandLine:
 
     def update_state(self, initial: bool = False):
         def update_state_callback(callback):
-            state = nm.get_connection_state()
+            state = self.nm_manager.connection_state
             self.app.on_network_update_callback(state, initial)
 
             # This exits the main loop and gives back control to the CLI
             callback()
+
         nm.action_with_mainloop(update_state_callback)
 
     def handle_exit(self):
@@ -329,7 +341,9 @@ class CommandLine:
             description=f"The {self.name} command line client"
         )
         parser.set_defaults(func=lambda _: parser.print_usage())
-        parser.add_argument("-d", "--debug", action="store_true", help="enable debugging")
+        parser.add_argument(
+            "-d", "--debug", action="store_true", help="enable debugging"
+        )
         subparsers = parser.add_subparsers(title="subcommands")
 
         institute_parser = subparsers.add_parser(
@@ -341,29 +355,39 @@ class CommandLine:
         connect_group = connect_parser.add_mutually_exclusive_group(required=True)
         if self.variant.use_predefined_servers:
             connect_group.add_argument(
-                "-s", "--search", type=str, help="connect to a server by searching for one"
+                "-s",
+                "--search",
+                type=str,
+                help="connect to a server by searching for one",
             )
             connect_group.add_argument(
-                "-o", "--orgid",
+                "-o",
+                "--orgid",
                 type=str,
                 help="connect to a secure internet server using the organisation ID",
             )
             connect_group.add_argument(
-                "-u", "--url",
+                "-u",
+                "--url",
                 type=str,
                 help="connect to an institute access server using the URL",
             )
         connect_group.add_argument(
-            "-c", "--custom-url", type=str, help="connect to a custom server using the URL"
+            "-c",
+            "--custom-url",
+            type=str,
+            help="connect to a custom server using the URL",
         )
         connect_group.add_argument(
-            "-n", "--number",
+            "-n",
+            "--number",
             type=int,
             help="connect to an already configured server using the number. Run the 'list' subcommand to see the currently configured servers with their number",
         )
         if self.variant.use_predefined_servers:
             connect_group.add_argument(
-                "-a", "--number-all",
+                "-a",
+                "--number-all",
                 type=int,
                 help="connect to a server using the number for all servers. Run the 'list --all' command to see all the available servers with their number",
             )
@@ -433,9 +457,7 @@ class CommandLineTransitions:
                 if location_index < 1 or location_index > len(locations):
                     print(f"Invalid location choice: {location_index}")
                     continue
-                self.app.model.set_secure_location(
-                    locations[location_index - 1]
-                )
+                self.app.model.set_secure_location(locations[location_index - 1])
                 return
             except ValueError:
                 print(f"Input is not a number: {location_nr}")
@@ -467,16 +489,14 @@ class CommandLineTransitions:
 
 
 def eduvpn():
-    _common = common.EduVPN(CLIENT_ID, str(CONFIG_PREFIX))
+    _common = common.EduVPN(CLIENT_ID, str(CONFIG_PREFIX), country())
     cmd = CommandLine("eduVPN", EDUVPN, _common)
     cmd.start()
 
 
 def letsconnect():
-    _common = common.EduVPN(LETSCONNECT_CLIENT_ID, str(LETSCONNECT_CONFIG_PREFIX))
+    _common = common.EduVPN(
+        LETSCONNECT_CLIENT_ID, str(LETSCONNECT_CONFIG_PREFIX), country()
+    )
     cmd = CommandLine("Let's Connect!", LETS_CONNECT, _common)
     cmd.start()
-
-
-if __name__ == "__main__":
-    eduvpn()

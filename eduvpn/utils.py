@@ -8,6 +8,7 @@ from sys import prefix
 from typing import Union, Callable, Optional
 
 import eduvpn_common.event as common
+from eduvpn_common.error import WrappedError
 from eduvpn_common.state import State, StateType
 
 logger = getLogger(__file__)
@@ -15,6 +16,12 @@ logger = getLogger(__file__)
 
 def get_logger(name_space: str) -> Logger:
     return getLogger(name_space)
+
+
+def log_exception(exception: Exception):
+    # Other exceptions are already logged by Go
+    if not isinstance(exception, WrappedError):
+        logger.error("Non-Go exception occurred", str(exception))
 
 
 @lru_cache(maxsize=1)
@@ -92,22 +99,38 @@ def model_transition(state: State, state_type: StateType) -> Callable:
             try:
                 model_converted = func(self, other_state, data)
             except Exception as e:
-                # Log as info as we're already giving the error in the UI
-                logger.info(e)
+                log_exception(e)
                 # Run the error state event
-                self.common.event.run(get_ui_state(ERROR_STATE), get_ui_state(ERROR_STATE), str(e), convert=False)
+                self.common.event.run(
+                    get_ui_state(ERROR_STATE),
+                    get_ui_state(ERROR_STATE),
+                    e,
+                    convert=False,
+                )
+                self.common.event.run(
+                    get_ui_state(ERROR_STATE),
+                    get_ui_state(ERROR_STATE),
+                    str(e),
+                    convert=False,
+                )
 
                 # Go back to the previous state as the model transition was not successful
-                self.common.go_back()
+                # Do this only if we're not already in the main state
+                if not self.common.in_fsm_state(State.NO_SERVER):
+                    self.common.go_back()
                 return
 
             other_ui_state = get_ui_state(other_state)
             ui_state = get_ui_state(state)
             # We can then pass it to the UI
             if state_type == StateType.ENTER:
-                self.common.event.run(other_ui_state, ui_state, model_converted, convert=False)
+                self.common.event.run(
+                    other_ui_state, ui_state, model_converted, convert=False
+                )
             else:
-                self.common.event.run(ui_state, other_ui_state, model_converted, convert=False)
+                self.common.event.run(
+                    ui_state, other_ui_state, model_converted, convert=False
+                )
 
         # Add the inner function on the state transition
         common.class_state_transition(state, state_type)(inner)
