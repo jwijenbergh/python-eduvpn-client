@@ -19,7 +19,7 @@ from eduvpn_common.state import State, StateType
 from gi.repository import Gdk, GdkPixbuf, GLib, GObject, Gtk
 
 from eduvpn.server import StatusImage
-from eduvpn.settings import FLAG_PREFIX
+from eduvpn.settings import CONFIG_PREFIX, FLAG_PREFIX
 from eduvpn.i18n import retrieve_country_name
 from eduvpn.settings import HELP_URL
 from eduvpn.utils import (
@@ -150,7 +150,8 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         self.main_overlay = builder.get_object("mainOverlay")
 
         # Create a revealer
-        self.clipboard = self.create_clipboard()
+        self.clipboard = None
+        self.initialize_clipboard()
         self.error_revealer = None
         self.error_revealer_label = None
         self.create_error_revealer()
@@ -301,8 +302,8 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
             self.show_error_revealer(str(error))
 
     @run_in_main_gtk_thread
-    def create_clipboard(self):
-        return Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
+    def initialize_clipboard(self):
+        self.clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
 
     @run_in_main_gtk_thread
     def create_error_revealer(self):
@@ -397,9 +398,12 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         if self.error_revealer is None or self.error_revealer_label is None:
             return
         self.error_revealer.set_reveal_child(True)
-        self.error_revealer_label.set_text(
-            f"The following error was reported: <i>{GLib.markup_escape_text(error)}</i>.\n See the log file for more information."
-        )
+        self.error_revealer_label.set_text(f'''
+The following error was reported: <i>{GLib.markup_escape_text(error)}</i>.
+
+For detailed information, see the following log files:
+ - {GLib.markup_escape_text(str(CONFIG_PREFIX / "python.log"))}
+ - {GLib.markup_escape_text(str(CONFIG_PREFIX / "go.log"))}''')
         self.error_revealer_label.set_use_markup(True)
 
     @run_in_main_gtk_thread
@@ -529,7 +533,7 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
             support_text = (
                 _("Support:")
                 + "\n"
-                + "\n".join(map(link_markup, server_info.support_contact))  # noqa: W503
+                + "\n".join(map(link_markup, server_info.support_contact))
             )
             self.server_support_label.set_markup(support_text)
             self.server_support_label.show()

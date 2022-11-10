@@ -1,7 +1,9 @@
+# readline is used! It is for going up and down in interactive mode
+import readline  # noqa: W0611
 from eduvpn.app import Application
 from eduvpn.utils import cmd_transition, init_logger, run_in_background_thread
 from eduvpn.ui.search import ServerGroup, group_servers
-from eduvpn.ui.utils import get_validity_text
+from eduvpn.ui.utils import get_validity_text, should_show_error
 import eduvpn.nm as nm
 from eduvpn.i18n import country, retrieve_country_name
 from eduvpn.server import ServerDatabase
@@ -33,6 +35,50 @@ def get_grouped_index(servers, index):
     return servers_added[index]
 
 
+def ask_profiles(app, profiles):
+    # There is only a single profile
+    if len(profiles.profiles) == 1:
+        print("There is only a single profile for this server:", profiles.profiles[0])
+        app.model.set_profile(profiles.profiles[0])
+        return
+
+    # Multiple profiles, print the index
+    for index, profile in enumerate(profiles.profiles):
+        print(f"[{index+1}]: {str(profile)}")
+
+    # And ask for the 1 based index
+    while True:
+        profile_nr = input("Please select a profile number to continue connecting: ")
+        try:
+            profile_index = int(profile_nr)
+
+            if profile_index < 1 or profile_index > len(profiles.profiles):
+                print(f"Invalid profile choice: {profile_index}")
+                continue
+            app.model.set_profile(profiles.profiles[profile_index - 1])
+            return
+        except ValueError:
+            print(f"Input is not a number: {profile_nr}")
+
+
+def ask_locations(app, locations):
+    for index, location in enumerate(locations):
+        print(f"[{index+1}]: {retrieve_country_name(location)}")
+
+    while True:
+        location_nr = input("Please select a location to continue: ")
+        try:
+            location_index = int(location_nr)
+
+            if location_index < 1 or location_index > len(locations):
+                print(f"Invalid location choice: {location_index}")
+                continue
+            app.model.set_secure_location(locations[location_index - 1])
+            return
+        except ValueError:
+            print(f"Input is not a number: {location_nr}")
+
+
 class CommandLine:
     def __init__(self, name: str, variant: ApplicationVariant, common):
         self.name = name
@@ -42,9 +88,12 @@ class CommandLine:
         self.nm_manager = self.app.nm_manager
         self.server_db = ServerDatabase(common, variant.use_predefined_servers)
         self.transitions = CommandLineTransitions(self.app)
+        self.skip_yes = False
         self.common.register_class_callbacks(self.transitions)
 
     def ask_yes(self, label) -> bool:
+        if self.skip_yes:
+            return True
         while True:
             yesno = input(label)
 
@@ -105,18 +154,19 @@ class CommandLine:
 
     def connect_server(self, server):
         def connect(callback=None):
-            try:
-
-                @run_in_background_thread("connect")
-                def connect_background():
+            @run_in_background_thread("connect")
+            def connect_background():
+                try:
                     # Connect to the server and ensure it exists
-                    self.app.model.connect(server, callback, ensure_exists=True)
+                    should_add = not self.server_db.has(server)
+                    self.app.model.connect(server, callback, ensure_exists=should_add)
+                except Exception as e:
+                    if should_show_error(e):
+                        print("Error connecting:", e, file=sys.stderr)
+                    if callback:
+                        callback()
 
-                connect_background()
-            except Exception as e:
-                print("Error connecting:", e, file=sys.stderr)
-                if callback:
-                    callback()
+            connect_background()
 
         if not server:
             print("No server found to connect to, exiting...")
@@ -157,7 +207,7 @@ class CommandLine:
             server = InstituteServer(url, "Institute Server", [], None, 0)
         elif org_id:
             server = SecureInternetServer(
-                org_id, "Organisation Server", [], None, 0, "nl"
+                org_id, "Organisation Server", [], None, 0, "NL"
             )
         elif custom_url:
             server = Server(custom_url, "Custom Server")
@@ -188,7 +238,9 @@ class CommandLine:
             .replace("</b>", "")
         )
         print(valid_for)
-        print(f"Current profile: {str(self.app.model.current_server.profiles.current)}")
+        print(f"Current profile: {str(current.profiles.current)}")
+        if isinstance(current, SecureInternetServer):
+            print(f"Current location: {retrieve_country_name(current.country_code)}")
 
     def connect(self, variables={}):
         if self.app.model.is_connected():
@@ -214,8 +266,9 @@ class CommandLine:
             try:
                 self.app.model.deactivate_connection(callback)
             except Exception as e:
-                print("An error occurred while trying to disconnect")
-                print("Error disconnecting:", e, file=sys.stderr)
+                if should_show_error(e):
+                    print("An error occurred while trying to disconnect")
+                    print("Error disconnecting:", e, file=sys.stderr)
                 if callback:
                     callback()
 
@@ -257,33 +310,97 @@ class CommandLine:
 
     def remove_server(self, server):
         if not server:
-            print("No server chosen to remove")
+            print("No server chosen to remove", file=sys.stderr)
             return False
 
         self.app.model.remove(server)
 
-    def renew(self, args={}):
-        current_server = self.app.model.current_server
-        if current_server is None:
-            print("No server to renew")
-            return
+    def change_profile(self, args={}):
+        if not self.app.model.is_connected():
+            print(
+                "Please connect to a server first before changing profiles",
+                file=sys.stderr,
+            )
+            return False
 
-        def renew(callback):
+        server = self.app.model.current_server
+
+        print("Current profile:", server.profiles.current)
+
+        ask_profiles(self.app, server.profiles)
+
+        @run_in_background_thread("change-profile-reconnect")
+        def reconnect(callback=None):
             try:
-
-                @run_in_background_thread("renew")
-                def renew_background():
-                    self.app.model.renew_session()
-                    if callback:
-                        callback()
-
-                renew_background()
+                self.app.model.reconnect(callback)
             except Exception as e:
-                print("An error occurred while trying to renew")
-                print("Error renewing:", e, file=sys.stderr)
+                if should_show_error(e):
+                    print(
+                        "An error occurred while trying to reconnect for profile change"
+                    )
+                    print("Error reconnecting:", e, file=sys.stderr)
                 if callback:
                     callback()
 
+        print("Reconnecting with the configured profile...")
+        nm.action_with_mainloop(reconnect)
+
+    def change_location(self, args={}):
+        if not self.app.model.is_connected():
+            print(
+                "Please connect to a secure internet server first before changing locations",
+                file=sys.stderr,
+            )
+            return False
+
+        server = self.app.model.current_server
+        if not isinstance(server, SecureInternetServer):
+            print(
+                "The currently connected server is not a secure internet server",
+                file=sys.stderr,
+            )
+            return False
+
+        print("Current location:", retrieve_country_name(server.country_code))
+
+        ask_locations(self.app, server.locations)
+
+        @run_in_background_thread("change-location-reconnect")
+        def reconnect(callback=None):
+            try:
+                self.app.model.reconnect(callback)
+            except Exception as e:
+                if should_show_error(e):
+                    print(
+                        "An error occurred while trying to reconnect for location change"
+                    )
+                    print("Error reconnecting:", e, file=sys.stderr)
+                if callback:
+                    callback()
+
+        print("Reconnecting with the configured location...")
+        nm.action_with_mainloop(reconnect)
+
+    def renew(self, args={}):
+        if not self.app.model.is_connected():
+            print("Please connect to a server first before renewing", file=sys.stderr)
+            return False
+
+        def renew(callback):
+            @run_in_background_thread("renew")
+            def renew_background():
+                try:
+                    self.app.model.renew_session(callback)
+                except Exception as e:
+                    if should_show_error(e):
+                        print("An error occurred while trying to renew")
+                        print("Error renewing:", e, file=sys.stderr)
+                    if callback:
+                        callback()
+
+            renew_background()
+
+        print("Disconnecting and renewing...")
         nm.action_with_mainloop(renew)
 
     def remove(self, args={}):
@@ -312,7 +429,7 @@ class CommandLine:
 
     def help_interactive(self):
         print(
-            "Available commands: connect, disconnect, remove, renew, status, list, help, quit"
+            "Available commands: change-location, change-profile, connect, disconnect, renew, remove, status, list, help, quit"
         )
 
     def update_state(self, initial: bool = False):
@@ -349,6 +466,8 @@ class CommandLine:
 
             # Execute the right command
             commands = {
+                "change-location": self.change_location,
+                "change-profile": self.change_profile,
                 "connect": self.connect,
                 "disconnect": self.disconnect,
                 "renew": self.renew,
@@ -369,6 +488,9 @@ class CommandLine:
         parser.add_argument(
             "-d", "--debug", action="store_true", help="enable debugging"
         )
+        parser.add_argument(
+            "-y", "--yes", action="store_true", help="answer yes for y/n prompts"
+        )
         subparsers = parser.add_subparsers(title="subcommands")
 
         interactive_parser = subparsers.add_parser(
@@ -376,8 +498,22 @@ class CommandLine:
         )
         interactive_parser.set_defaults(func=self.interactive)
 
-        renew_parser = subparsers.add_parser("renew", help="renew the current server")
+        renew_parser = subparsers.add_parser(
+            "renew", help="renew the validity for the currently connected server"
+        )
         renew_parser.set_defaults(func=self.renew)
+
+        change_profile_parser = subparsers.add_parser(
+            "change-location",
+            help="change the location for the currently connected secure internet server",
+        )
+        change_profile_parser.set_defaults(func=self.change_location)
+
+        change_profile_parser = subparsers.add_parser(
+            "change-profile",
+            help="change the profile for the currently connected server",
+        )
+        change_profile_parser.set_defaults(func=self.change_profile)
 
         connect_parser = subparsers.add_parser("connect", help="connect to a server")
         connect_group = connect_parser.add_mutually_exclusive_group(required=True)
@@ -456,6 +592,9 @@ class CommandLine:
 
         init_logger(parsed.debug, self.variant.logfile, CONFIG_DIR_MODE)
 
+        # Skip yes/no prompts if given
+        self.skip_yes = parsed.yes
+
         # Register the common library
         self.common.register(parsed.debug)
 
@@ -475,43 +614,15 @@ class CommandLineTransitions:
 
     @cmd_transition(State.ASK_LOCATION, StateType.ENTER)
     def on_ask_location(self, old_state: State, locations):
-        print("This Secure Internet Server has the following available locations:")
-        for index, location in enumerate(locations):
-            print(f"[{index+1}]: {retrieve_country_name(location)}")
-
-        while True:
-            location_nr = input("Please select a location to continue connecting: ")
-            try:
-                location_index = int(location_nr)
-
-                if location_index < 1 or location_index > len(locations):
-                    print(f"Invalid location choice: {location_index}")
-                    continue
-                self.app.model.set_secure_location(locations[location_index - 1])
-                return
-            except ValueError:
-                print(f"Input is not a number: {location_nr}")
+        print(
+            "This Secure Internet Server has the multiple available locations. Please choose one to continue..."
+        )
+        ask_locations(self.app, locations)
 
     @cmd_transition(State.ASK_PROFILE, StateType.ENTER)
     def on_ask_profile(self, old_state: State, profiles):
-        print("This server has multiple profiles.")
-        for index, profile in enumerate(profiles.profiles):
-            print(f"[{index+1}]: {str(profile)}")
-
-        while True:
-            profile_nr = input(
-                "Please select a profile number to continue connecting: "
-            )
-            try:
-                profile_index = int(profile_nr)
-
-                if profile_index < 1 or profile_index > len(profiles.profiles):
-                    print(f"Invalid profile choice: {profile_index}")
-                    continue
-                self.app.model.set_profile(profiles.profiles[profile_index - 1])
-                return
-            except ValueError:
-                print(f"Input is not a number: {profile_nr}")
+        print("This server has multiple profiles. Please choose one to continue...")
+        ask_profiles(self.app, profiles)
 
     @cmd_transition(State.OAUTH_STARTED, StateType.ENTER)
     def on_oauth_started(self, old_state: State, url: str):

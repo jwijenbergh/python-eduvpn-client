@@ -2,7 +2,7 @@ import logging
 import webbrowser
 import signal
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Callable, Iterator, Optional
 from eduvpn_common.discovery import DiscoOrganization, DiscoServer
 from eduvpn_common.main import EduVPN
@@ -10,7 +10,7 @@ from eduvpn_common.server import Server, InstituteServer, SecureInternetServer
 from eduvpn_common.state import State, StateType
 from eduvpn.server import ServerDatabase
 
-from eduvpn.connection import Connection
+from eduvpn.connection import Connection, Validity
 
 from eduvpn import nm
 from eduvpn.config import Configuration
@@ -23,29 +23,6 @@ from eduvpn.variants import ApplicationVariant
 from typing import List, Tuple
 
 logger = logging.getLogger(__name__)
-
-
-def now() -> datetime:
-    return datetime.now()
-
-
-class Validity:
-    def __init__(self, end: datetime) -> None:
-        self.end = end
-
-    @property
-    def remaining(self) -> timedelta:
-        """
-        Return the duration from now until expiry.
-        """
-        return self.end - now()
-
-    @property
-    def is_expired(self) -> bool:
-        """
-        Return True if the validity has expired.
-        """
-        return now() >= self.end
 
 
 class ApplicationModelTransitions:
@@ -223,6 +200,7 @@ class ApplicationModel:
             return self.common.get_config_custom_server(
                 server.url, self.config.prefer_tcp
             )
+        raise Exception("No server to get a config for")
 
     def connect(
         self, server, callback: Optional[Callable] = None, ensure_exists=False
@@ -259,8 +237,19 @@ class ApplicationModel:
         self.common.set_connecting()
         connect(config, config_type)
 
+    def reconnect(self, callback: Optional[Callable] = None):
+        def on_connected():
+            if callback:
+                callback()
+
+        def on_disconnected():
+            self.activate_connection(on_connected)
+
+        # Reconnect
+        self.deactivate_connection(on_disconnected)
+
     # https://github.com/eduvpn/documentation/blob/v3/API.md#session-expiry
-    def renew_session(self):
+    def renew_session(self, callback: Optional[Callable] = None):
         was_connected = self.is_connected()
 
         def reconnect():
@@ -268,7 +257,7 @@ class ApplicationModel:
             # Start the OAuth authorization flow
             self.common.renew_session()
             # Automatically reconnect to the server
-            self.activate_connection()
+            self.activate_connection(callback)
 
         if was_connected:
             # Call /disconnect and reconnect with callback
@@ -299,11 +288,11 @@ class ApplicationModel:
         else:
             do_profile()
 
-    def activate_connection(self):
+    def activate_connection(self, callback: Optional[Callable] = None):
         if not self.current_server:
             return
 
-        self.connect(self.current_server)
+        self.connect(self.current_server, callback)
 
     def deactivate_connection(self, callback: Optional[Callable] = None) -> None:
         self.common.set_disconnecting()
