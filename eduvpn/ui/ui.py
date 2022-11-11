@@ -170,6 +170,9 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         self.connection_info_downloaded = builder.get_object(
             "connectionInfoDownloadedText"
         )
+        self.connection_info_protocol = builder.get_object(
+            "connectionInfoProtocolText"
+        )
         self.connection_info_uploaded = builder.get_object("connectionInfoUploadedText")
         self.connection_info_ipv4address = builder.get_object(
             "connectionInfoIpv4AddressText"
@@ -1031,9 +1034,12 @@ For detailed information, see the following log files:
                 return
             download = self.connection_info_stats.download
             upload = self.connection_info_stats.upload
+            protocol = self.connection_info_stats.protocol
             ipv4 = self.connection_info_stats.ipv4
             ipv6 = self.connection_info_stats.ipv6
             self.connection_info_downloaded.set_text(download)
+            self.connection_info_protocol.set_text(f"Protocol: <b>{GLib.markup_escape_text(protocol)}</b>")
+            self.connection_info_protocol.set_use_markup(True)
             self.connection_info_uploaded.set_text(upload)
             self.connection_info_ipv4address.set_text(ipv4)
             self.connection_info_ipv6address.set_text(ipv6)

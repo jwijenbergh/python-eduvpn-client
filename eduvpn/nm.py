@@ -151,6 +151,21 @@ class NMManager:
         return None
 
     @property
+    def protocol(self) -> Optional[str]:
+        """
+        Get the VPN protocol as a string for the active connection
+        """
+        connection = self.active_connection
+        if connection is None:
+            return None
+        type = connection.get_connection_type()
+        if type == "vpn":
+            return "OpenVPN"
+        elif type == "wireguard":
+            return "WireGuard"
+        return None
+
+    @property
     def iface(self) -> Optional[str]:
         """
         Get the interface as a string for an openvpn or wireguard connection if there is one

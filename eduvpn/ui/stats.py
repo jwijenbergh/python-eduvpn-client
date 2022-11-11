@@ -53,6 +53,13 @@ class NetworkStats:
         return _ipv6
 
     @cached_stats_property
+    def protocol(self) -> str:
+        _protocol = self.manager.protocol
+        if _protocol is None:
+            _protocol = self.default_text
+        return _protocol
+
+    @cached_stats_property
     def upload_file(self) -> Optional[TextIO]:
         return self.open_file("tx_bytes")
 
