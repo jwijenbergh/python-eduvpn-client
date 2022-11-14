@@ -9,7 +9,7 @@ from pathlib import Path
 from shutil import rmtree
 from socket import AF_INET, AF_INET6
 from tempfile import mkdtemp
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple, TextIO
 
 from eduvpn.ovpn import Ovpn
 from eduvpn.storage import get_uuid, set_uuid, write_ovpn
@@ -20,6 +20,8 @@ gi.require_version("NM", "1.0")  # noqa: E402
 from gi.repository.Gio import Task  # type: ignore
 
 _logger = logging.getLogger(__name__)
+
+LINUX_NET_FOLDER = Path("/sys/class/net")
 
 try:
     import gi
@@ -97,6 +99,41 @@ class NMManager:
         if self.client is None:
             return False
         return True
+
+    # TODO: Move this somewhere else?
+    def open_stats_file(self, filename: str) -> Optional[TextIO]:
+        """
+        Helper function to open a statistics network file
+        """
+        if not self.iface:
+            return None
+        filepath = LINUX_NET_FOLDER / self.iface / "statistics" / filename  # type: ignore
+        if not filepath.is_file():
+            return None
+        return open(filepath, "r")
+
+    # TODO: Move this somewhere else?
+    def get_stats_bytes(self, filehandler: Optional[TextIO]) -> Optional[int]:
+        """
+        Helper function to get a statistics file to calculate the total data transfer
+        """
+        # If the interface is not set
+        # or the file is not present, we cannot get the stat
+        if not self.iface:
+            # Warning was already shown
+            return None
+        if not filehandler:
+            # Warning was already shown
+            return None
+
+        # Get the statistic from the file
+        # and go to the beginning
+        try:
+            stat = int(filehandler.readline())
+        except ValueError:
+            stat = 0
+        filehandler.seek(0)
+        return stat
 
     @property
     def managed(self) -> bool:

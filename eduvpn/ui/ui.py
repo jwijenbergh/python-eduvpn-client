@@ -616,6 +616,7 @@ For detailed information, see the following log files:
         # Disable the profile combo box and switch
         self.connection_switch.set_sensitive(False)
         self.select_profile_combo.set_sensitive(False)
+        self.call_model("cancel_failover")
 
     @ui_transition(State.DISCONNECTING, StateType.LEAVE)
     def exit_disconnecting(self, old_state: str, data):
@@ -830,6 +831,7 @@ For detailed information, see the following log files:
         self.update_connection_status(True)
         self.update_connection_server(server_info)
         self.start_validity_renew(server_info)
+        self.call_model("start_failover")
 
     def start_validity_renew(self, server_info) -> None:
         self.connection_validity_thread_cancel = run_periodically(
