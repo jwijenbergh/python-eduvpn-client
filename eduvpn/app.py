@@ -352,6 +352,9 @@ class ApplicationModel:
     def is_search_server(self) -> bool:
         return self.common.in_fsm_state(State.SEARCH_SERVER)
 
+    def is_connecting(self) -> bool:
+        return self.common.in_fsm_state(State.CONNECTING)
+
     def is_connected(self) -> bool:
         return self.common.in_fsm_state(State.CONNECTED)
 
@@ -383,7 +386,7 @@ class Application:
     def on_network_update_callback(self, state, initial=False):
         try:
             if state == nm.ConnectionState.CONNECTED:
-                if self.model.is_disconnected() or initial:
+                if self.model.is_connecting() or initial:
                     self.common.set_connected()
             elif state == nm.ConnectionState.CONNECTING:
                 if self.model.is_disconnected():
