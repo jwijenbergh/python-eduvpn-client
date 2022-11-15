@@ -256,7 +256,16 @@ class NMManager:
         addresses = ip6_config.get_addresses()
         if not addresses:
             return None
-        return addresses[0].get_address()
+
+        for addr in addresses:
+            try:
+                ipv6_str = addr.get_address()
+                ipv6 = ip_address(ipv6_str)
+                if not ipv6.is_link_local:
+                    return ipv6_str
+            except ValueError:
+                continue
+        return None
 
     @property
     def existing_connection(self) -> Optional[str]:
