@@ -142,14 +142,26 @@ class ApplicationModel:
     def start_failover(self):
         current_vpn_protocol = self.nm_manager.protocol
         if current_vpn_protocol != "WireGuard":
-            logger.debug(f"Current protocol ({current_vpn_protocol}) does not support failover")
+            logger.debug(
+                f"Current protocol ({current_vpn_protocol}) does not support failover"
+            )
             return
         try:
             rx_bytes_file = self.nm_manager.open_stats_file("rx_bytes")
             if rx_bytes_file is None:
-                logger.debug("Failed failed to initialize, failed to open rx bytes file")
+                logger.debug(
+                    "Failed to initialize failover, failed to open rx bytes file"
+                )
                 return
-            dropped = self.common.start_failover("1.1.1.1", ReadRxBytes(lambda : self.get_failover_rx(rx_bytes_file)))
+            endpoint = self.nm_manager.wireguard_endpoint
+            if endpoint is None:
+                logger.debug(
+                    "Failed to initialize failover, failed to get WireGuard endpoint"
+                )
+            endpoint = endpoint.split(":")[0]
+            dropped = self.common.start_failover(
+                endpoint, ReadRxBytes(lambda: self.get_failover_rx(rx_bytes_file))
+            )
             if dropped:
                 logger.debug("Failover exited, connection is dropped")
                 if self.is_connected():

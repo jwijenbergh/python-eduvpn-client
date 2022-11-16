@@ -151,6 +151,25 @@ class NMManager:
         return any(d.get_managed() for d in master_devices)
 
     @property
+    def wireguard_endpoint(self) -> Optional[str]:
+        active_con = self.active_connection
+        if active_con is None:
+            return None
+
+        con = active_con.get_connection()
+        if con is None:
+            return None
+
+        s_wireguard = con.get_setting(NM.SettingWireGuard)
+        if s_wireguard is None:
+            return None
+
+        if s_wireguard.get_peers_len() < 1:
+            return None
+
+        return s_wireguard.get_peer(0).get_endpoint()
+
+    @property
     def uuid(self):
         return get_uuid(self.variant)
 
@@ -467,7 +486,9 @@ class NMManager:
         s_con.set_property(NM.SETTING_CONNECTION_ID, self.variant.name)
         s_con.set_property(NM.SETTING_CONNECTION_TYPE, "wireguard")
         s_con.set_property(NM.SETTING_CONNECTION_UUID, str(uuid.uuid4()))
-        s_con.set_property(NM.SETTING_CONNECTION_INTERFACE_NAME, self.variant.translation_domain)
+        s_con.set_property(
+            NM.SETTING_CONNECTION_INTERFACE_NAME, self.variant.translation_domain
+        )
 
         # https://lazka.github.io/pgi-docs/NM-1.0/classes/WireGuardPeer.html#NM.WireGuardPeer
         peer = NM.WireGuardPeer.new()
