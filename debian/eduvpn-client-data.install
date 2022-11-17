@@ -1,3 +1,4 @@
 share/eduvpn usr/share
 share/letsconnect usr/share
 share/icons usr/share
+debian/eduvpn.gpg /usr/share/keyrings
