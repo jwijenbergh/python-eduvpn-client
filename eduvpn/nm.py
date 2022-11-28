@@ -151,6 +151,13 @@ class NMManager:
         return any(d.get_managed() for d in master_devices)
 
     @property
+    def wireguard_mtu(self) -> Optional[int]:
+        device = self.wireguard_device
+        if device is None:
+            return None
+        return device.get_mtu()
+
+    @property
     def wireguard_endpoint(self) -> Optional[str]:
         active_con = self.active_connection
         if active_con is None:
@@ -620,7 +627,8 @@ class NMManager:
 
         con.delete_async(callback=on_deleted, user_data=callback)
 
-    def deactivate_connection_wg(self, callback: Optional[Callable] = None) -> None:
+    @property
+    def wireguard_device(self) -> Optional["NM.DeviceWireGuard"]:
         devices = [
             device
             for device in self.client.get_all_devices()
@@ -629,12 +637,11 @@ class NMManager:
             in {conn.get_uuid() for conn in device.get_available_connections()}
         ]
         if not devices:
-            _logger.warning("No WireGuard device to disconnect")
-            return
+            return None
 
-        assert len(devices) == 1
-        device = devices[0]
+        return devices[0]
 
+    def deactivate_connection_wg(self, callback: Optional[Callable] = None) -> None:
         def on_disconnect(a_device: "NM.DeviceWireGuard", res, callback=None):
             try:
                 result = a_device.disconnect_finish(res)
@@ -647,6 +654,10 @@ class NMManager:
                     self.delete_connection(callback)
 
         _logger.debug(f"disconnect uuid: {uuid}")
+        device = self.wireguard_device
+        if device is None:
+            _logger.warning("Cannot disconnect, no WireGuard device")
+            return
         device.disconnect_async(callback=on_disconnect, user_data=callback)
 
     def subscribe_to_status_changes(

@@ -158,9 +158,16 @@ class ApplicationModel:
                 logger.debug(
                     "Failed to initialize failover, failed to get WireGuard endpoint"
                 )
+                return
             endpoint = endpoint.split(":")[0]
+            wg_mtu = self.nm_manager.wireguard_mtu
+            if wg_mtu is None:
+                logger.debug(
+                    "Failed to initialize failover, failed to get WireGuard MTU"
+                    )
+                return
             dropped = self.common.start_failover(
-                endpoint, ReadRxBytes(lambda: self.get_failover_rx(rx_bytes_file))
+                endpoint, wg_mtu, ReadRxBytes(lambda: self.get_failover_rx(rx_bytes_file))
             )
             if dropped:
                 logger.debug("Failover exited, connection is dropped")
