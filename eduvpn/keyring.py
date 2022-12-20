@@ -3,12 +3,12 @@ import os
 import gi
 import json
 
-secureKeyring = False
+secureKeyring = True
 try:
     gi.require_version("Secret", "1")
     from gi.repository import Secret
 except (ValueError, ImportError) as e:
-    secureKeyring = True
+    secureKeyring = False
 
 
 class TokenKeyring(ABC):
@@ -18,6 +18,10 @@ class TokenKeyring(ABC):
     @property
     def available(self) -> bool:
         return True
+
+    @property
+    def secure(self) -> bool:
+        return False
 
     @abstractmethod
     def clear(self, attributes) -> bool:
@@ -38,10 +42,26 @@ class DBusKeyring(TokenKeyring):
         # None is the default collection
         self.collection = None
 
+    # This keyring is secure
+    def secure(self):
+        return True
+
     @property
     def available(self):
-        # TODO: Do a trial run
-        return secureKeyring
+        # If import was not successful, this is definitely not available
+        if not secureKeyring:
+            return False
+
+        # Libs available, do a test run
+        try:
+            attributes = {"test": "test"}
+            secret = "eduVPN test"
+            self.save("eduVPN testing run", attributes, secret)
+            assert self.load(attributes) == secret
+            self.clear(attributes)
+        except (gi.repository.GLib.Error, AssertionError):
+            return False
+        return True
 
     def create_schema(self, attributes):
         return Secret.Schema.new(self.variant.name, Secret.SchemaFlags.NONE, {
