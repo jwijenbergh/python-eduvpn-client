@@ -7,9 +7,9 @@ from functools import lru_cache
 from ipaddress import ip_address, ip_interface
 from pathlib import Path
 from shutil import rmtree
-from socket import AF_INET, AF_INET6
+from socket import AF_INET, AF_INET6, gethostbyname, gaierror
 from tempfile import mkdtemp
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple, TextIO
 
 from eduvpn.ovpn import Ovpn
 from eduvpn.storage import get_uuid, set_uuid, write_ovpn
@@ -20,6 +20,8 @@ gi.require_version("NM", "1.0")  # noqa: E402
 from gi.repository.Gio import Task  # type: ignore
 
 _logger = logging.getLogger(__name__)
+
+LINUX_NET_FOLDER = Path("/sys/class/net")
 
 try:
     import gi
@@ -85,6 +87,7 @@ class ConnectionState(enum.Enum):
 class NMManager:
     def __init__(self, variant: ApplicationVariant):
         self.variant = variant
+        self.wg_endpoint_ip: Optional[str] = None
         try:
             self.client = NM.Client.new(None)
         except Exception:
@@ -97,6 +100,41 @@ class NMManager:
         if self.client is None:
             return False
         return True
+
+    # TODO: Move this somewhere else?
+    def open_stats_file(self, filename: str) -> Optional[TextIO]:
+        """
+        Helper function to open a statistics network file
+        """
+        if not self.iface:
+            return None
+        filepath = LINUX_NET_FOLDER / self.iface / "statistics" / filename  # type: ignore
+        if not filepath.is_file():
+            return None
+        return open(filepath, "r")
+
+    # TODO: Move this somewhere else?
+    def get_stats_bytes(self, filehandler: Optional[TextIO]) -> Optional[int]:
+        """
+        Helper function to get a statistics file to calculate the total data transfer
+        """
+        # If the interface is not set
+        # or the file is not present, we cannot get the stat
+        if not self.iface:
+            # Warning was already shown
+            return None
+        if not filehandler:
+            # Warning was already shown
+            return None
+
+        # Get the statistic from the file
+        # and go to the beginning
+        try:
+            stat = int(filehandler.readline())
+        except ValueError:
+            stat = 0
+        filehandler.seek(0)
+        return stat
 
     @property
     def managed(self) -> bool:
@@ -112,6 +150,13 @@ class NMManager:
             return False
 
         return any(d.get_managed() for d in master_devices)
+
+    @property
+    def wireguard_mtu(self) -> Optional[int]:
+        device = self.wireguard_device
+        if device is None:
+            return None
+        return device.get_mtu()
 
     @property
     def uuid(self):
@@ -148,6 +193,21 @@ class NMManager:
         for connection in self.client.get_active_connections():
             if connection.get_uuid() == self.uuid:
                 return connection
+        return None
+
+    @property
+    def protocol(self) -> Optional[str]:
+        """
+        Get the VPN protocol as a string for the active connection
+        """
+        connection = self.active_connection
+        if connection is None:
+            return None
+        type = connection.get_connection_type()
+        if type == "vpn":
+            return "OpenVPN"
+        elif type == "wireguard":
+            return "WireGuard"
         return None
 
     @property
@@ -204,7 +264,16 @@ class NMManager:
         addresses = ip6_config.get_addresses()
         if not addresses:
             return None
-        return addresses[0].get_address()
+
+        for addr in addresses:
+            try:
+                ipv6_str = addr.get_address()
+                ipv6 = ip_address(ipv6_str)
+                if not ipv6.is_link_local:
+                    return ipv6_str
+            except ValueError:
+                continue
+        return None
 
     @property
     def existing_connection(self) -> Optional[str]:
@@ -238,7 +307,7 @@ class NMManager:
         Import the OVPN string into Network Manager.
         """
         target_parent = Path(mkdtemp())
-        target = target_parent / f"{self.variant.vpn_name}.ovpn"
+        target = target_parent / f"{self.variant.name}.ovpn"
         write_ovpn(ovpn, private_key, certificate, target)
         connection = self.ovpn_import(target)
         rmtree(target_parent)
@@ -249,7 +318,7 @@ class NMManager:
         Import the OVPN string into Network Manager.
         """
         target_parent = Path(mkdtemp())
-        target = target_parent / f"{self.variant.vpn_name}.ovpn"
+        target = target_parent / f"{self.variant.name}.ovpn"
         _logger.debug(f"Writing configuration to {target}")
         with open(target, mode="w+t") as f:
             ovpn.write(f)
@@ -357,6 +426,13 @@ class NMManager:
             new_con, callback, default_gateway, settings_config.nm_system_wide  # type: ignore
         )
 
+    def get_ip(self, url) -> Optional[str]:
+        try:
+            ip = gethostbyname(url)
+        except gaierror:
+            ip = None
+        return ip
+
     def start_wireguard_connection(  # noqa: C901
         self,
         config: ConfigParser,
@@ -403,19 +479,20 @@ class NMManager:
         profile = NM.SimpleConnection.new()
         s_con = NM.SettingConnection.new()
         s_con.set_property(NM.DEVICE_AUTOCONNECT, False)
-        s_con.set_property(
-            NM.SETTING_CONNECTION_ID, f"{self.variant.vpn_name}-wireguard"
-        )
+        s_con.set_property(NM.SETTING_CONNECTION_ID, self.variant.name)
         s_con.set_property(NM.SETTING_CONNECTION_TYPE, "wireguard")
         s_con.set_property(NM.SETTING_CONNECTION_UUID, str(uuid.uuid4()))
         s_con.set_property(
-            NM.SETTING_CONNECTION_INTERFACE_NAME,
-            f"{self.variant.translation_domain}-WG",
+            NM.SETTING_CONNECTION_INTERFACE_NAME, self.variant.translation_domain
         )
 
         # https://lazka.github.io/pgi-docs/NM-1.0/classes/WireGuardPeer.html#NM.WireGuardPeer
         peer = NM.WireGuardPeer.new()
-        peer.set_endpoint(config["Peer"]["Endpoint"], allow_invalid=False)
+        wg_endpoint = config["Peer"]["Endpoint"]
+        peer.set_endpoint(wg_endpoint, allow_invalid=False)
+        endpoint = wg_endpoint.split(":")[0]
+        self.wg_endpoint_ip = self.get_ip(endpoint)
+
         peer.set_public_key(config["Peer"]["PublicKey"], accept_invalid=False)
         for ip in config["Peer"]["AllowedIPs"].split(","):
             peer.append_allowed_ip(ip.strip(), accept_invalid=False)
@@ -543,7 +620,8 @@ class NMManager:
 
         con.delete_async(callback=on_deleted, user_data=callback)
 
-    def deactivate_connection_wg(self, callback: Optional[Callable] = None) -> None:
+    @property
+    def wireguard_device(self) -> Optional["NM.DeviceWireGuard"]:
         devices = [
             device
             for device in self.client.get_all_devices()
@@ -552,12 +630,11 @@ class NMManager:
             in {conn.get_uuid() for conn in device.get_available_connections()}
         ]
         if not devices:
-            _logger.warning("No WireGuard device to disconnect")
-            return
+            return None
 
-        assert len(devices) == 1
-        device = devices[0]
+        return devices[0]
 
+    def deactivate_connection_wg(self, callback: Optional[Callable] = None) -> None:
         def on_disconnect(a_device: "NM.DeviceWireGuard", res, callback=None):
             try:
                 result = a_device.disconnect_finish(res)
@@ -570,6 +647,10 @@ class NMManager:
                     self.delete_connection(callback)
 
         _logger.debug(f"disconnect uuid: {uuid}")
+        device = self.wireguard_device
+        if device is None:
+            _logger.warning("Cannot disconnect, no WireGuard device")
+            return
         device.disconnect_async(callback=on_disconnect, user_data=callback)
 
     def subscribe_to_status_changes(

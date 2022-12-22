@@ -36,6 +36,7 @@ deb:
 	apt update
 	apt install -y \
 		gir1.2-nm-1.0 \
+		gir1.2-secret-1 \
 		gir1.2-gtk-3.0 \
 		gir1.2-notify-0.7 \
 		libdbus-glib-1-dev \
@@ -53,6 +54,7 @@ deb:
 dnf:
 	sudo dnf install -y \
 		libnotify \
+		libsecret \
 		gtk3 \
 		python3-dbus \
 		python3-requests-oauthlib \
@@ -74,14 +76,14 @@ doc:  $(VENV)/
 
 srpm-fedora:
 	rm -f dist/*.src.rpm
-	docker build --progress=plain -t rpm_fedora_35 -f docker/rpm_fedora_35.docker .
+	docker build --progress=plain -t rpm_fedora_37 -f docker/rpm_fedora_37.docker .
 	mkdir -p dist
-	docker run -v `pwd`/dist:/dist:rw rpm_fedora_35 sh -c "cp /root/rpmbuild/SRPMS/* /dist"
+	docker run -v `pwd`/dist:/dist:rw rpm_fedora_37 sh -c "cp /root/rpmbuild/SRPMS/* /dist"
 
 rpm-fedora:
-	docker build --progress=plain -t rpm_fedora_35 -f docker/rpm_fedora_35.docker .
+	docker build --progress=plain -t rpm_fedora_37 -f docker/rpm_fedora_37.docker .
 	mkdir -p dist
-	docker run -v `pwd`/dist:/dist:rw rpm_fedora_35 sh -c "cp /root/rpmbuild/RPMS/noarch/* /dist"
+	docker run -v `pwd`/dist:/dist:rw rpm_fedora_37 sh -c "cp /root/rpmbuild/RPMS/noarch/* /dist"
 
 rpm-centos:
 	docker build --progress=plain -t rpm_centos_stream8 -f docker/rpm_centos_stream8.docker .

@@ -45,11 +45,7 @@ class ApplicationVariant:
 
     @property
     def logfile(self) -> Path:
-        return self.config_prefix / "python.log"
-
-    @property
-    def vpn_name(self) -> str:
-        return self.translation_domain.lower()
+        return self.config_prefix / "log"
 
 
 EDUVPN = ApplicationVariant(

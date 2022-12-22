@@ -19,7 +19,7 @@ from eduvpn_common.state import State, StateType
 from gi.repository import Gdk, GdkPixbuf, GLib, GObject, Gtk
 
 from eduvpn.server import StatusImage
-from eduvpn.settings import CONFIG_PREFIX, FLAG_PREFIX
+from eduvpn.settings import FLAG_PREFIX
 from eduvpn.i18n import retrieve_country_name
 from eduvpn.settings import HELP_URL
 from eduvpn.utils import (
@@ -35,6 +35,7 @@ from eduvpn.utils import (
 from eduvpn.ui import search
 from eduvpn.ui.stats import NetworkStats
 from eduvpn.ui.utils import (
+    QUIT_ID,
     get_validity_text,
     link_markup,
     should_show_error,
@@ -46,7 +47,7 @@ from eduvpn.ui.utils import (
 from datetime import datetime
 from gi.overrides.Gdk import Event, EventButton  # type: ignore
 from gi.overrides.Gtk import Box, Builder, Button, TreePath, TreeView, TreeViewColumn  # type: ignore
-from gi.repository.Gtk import EventBox, SearchEntry, Switch
+from gi.repository.Gtk import EventBox, SearchEntry, Switch  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -170,6 +171,9 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         self.connection_info_downloaded = builder.get_object(
             "connectionInfoDownloadedText"
         )
+        self.connection_info_protocol = builder.get_object(
+            "connectionInfoProtocolText"
+        )
         self.connection_info_uploaded = builder.get_object("connectionInfoUploadedText")
         self.connection_info_ipv4address = builder.get_object(
             "connectionInfoIpv4AddressText"
@@ -181,6 +185,9 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         self.connection_validity_thread_cancel: Optional[Callable] = None
         self.connection_renew_thread_cancel: Optional[Callable] = None
         self.connection_info_stats = None
+
+        self.keyring_dialog = builder.get_object("keyringDialog")
+        self.keyring_do_not_show = builder.get_object("keyringDoNotShow")
 
         self.server_image = builder.get_object("serverImage")
         self.server_label = builder.get_object("serverLabel")
@@ -403,17 +410,18 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         self.error_revealer_label.set_text(f'''
 The following error was reported: <i>{GLib.markup_escape_text(error)}</i>.
 
-For detailed information, see the following log files:
- - {GLib.markup_escape_text(str(CONFIG_PREFIX / "python.log"))}
- - {GLib.markup_escape_text(str(CONFIG_PREFIX / "go.log"))}''')
+For detailed information, see the log file located at:
+ - {GLib.markup_escape_text(str(self.app.variant.logfile))}''')
         self.error_revealer_label.set_use_markup(True)
 
     @run_in_main_gtk_thread
     def copy_error_revealer(self, _button) -> None:
         if self.error_revealer_label is None:
             return
+        if self.clipboard is None:
+            return
         self.clipboard.set_text(self.error_revealer_label.get_text(), -1)
-        self.eduvpn_app.enter_ClipboardError()  # type: ignore
+        self.eduvpn_app.enter_CopiedAnError()  # type: ignore
 
     @run_in_main_gtk_thread
     def hide_error_revealer(self, _button) -> None:
@@ -473,19 +481,19 @@ For detailed information, see the following log files:
 
     def recreate_profile_combo(self, server_info) -> None:
         # Create a store of profiles
-        profile_store = Gtk.ListStore(GObject.TYPE_STRING, GObject.TYPE_PYOBJECT)
+        profile_store = Gtk.ListStore(GObject.TYPE_STRING, GObject.TYPE_PYOBJECT)  # type: ignore
         active_profile = 0
         for index, profile in enumerate(server_info.profiles.profiles):
             if profile == server_info.profiles.current:
                 active_profile = index
-            profile_store.append([str(profile), profile])
+            profile_store.append([str(profile), profile])  # type: ignore
 
         # Create a new combobox
         # We create a new one every time because Gtk has some weird behaviour regarding the width of the combo box
         # When we add items that are large, the combobox resizes to fit the content
         # However, when we add items again that are all smaller (e.g. for a new server), the combo box does not shrink back
         # The only proper way seems to be to recreate the combobox every time
-        combo = Gtk.ComboBoxText.new()
+        combo = Gtk.ComboBoxText.new()  # type: ignore
         combo.set_model(profile_store)
         combo.set_active(active_profile)
         combo.set_halign(Gtk.Align.CENTER)
@@ -611,6 +619,7 @@ For detailed information, see the following log files:
         # Disable the profile combo box and switch
         self.connection_switch.set_sensitive(False)
         self.select_profile_combo.set_sensitive(False)
+        self.call_model("cancel_failover")
 
     @ui_transition(State.DISCONNECTING, StateType.LEAVE)
     def exit_disconnecting(self, old_state: str, data):
@@ -654,6 +663,14 @@ For detailed information, see the following log files:
         # Do not go in a loop by checking old state
         if not servers and old_state != get_ui_state(State.SEARCH_SERVER):
             self.call_model("set_search_server")
+
+        if not self.app.model.keyring.secure and not self.app.config.ignore_keyring_warning:
+            self.keyring_dialog.show()
+            _id = self.keyring_dialog.run()
+            if _id == QUIT_ID:
+                self.close()  # type: ignore
+            self.keyring_dialog.destroy()
+            self.app.config.ignore_keyring_warning = self.keyring_do_not_show.get_active()
 
     @ui_transition(State.NO_SERVER, StateType.LEAVE)
     def exit_MainState(self, old_state, new_state):
@@ -825,6 +842,7 @@ For detailed information, see the following log files:
         self.update_connection_status(True)
         self.update_connection_server(server_info)
         self.start_validity_renew(server_info)
+        self.call_model("start_failover")
 
     def start_validity_renew(self, server_info) -> None:
         self.connection_validity_thread_cancel = run_periodically(
@@ -886,7 +904,7 @@ For detailed information, see the following log files:
         logger.debug(f"activated server: {server!r}")
 
         def on_added(display_name):
-            self.eduvpn_app.enter_Added(display_name)
+            logger.debug(f"Server added, {display_name}")
 
         if self.app.model.is_search_server():
             if self.app.config.autoconnect:
@@ -939,26 +957,26 @@ For detailed information, see the following log files:
         row = model[tree_iter]
         server = row[1]
 
-        cancel_item = Gtk.MenuItem()
+        cancel_item = Gtk.MenuItem()  # type: ignore
         cancel_box = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 0)  # type: ignore
-        cancel_image = Gtk.Image.new_from_icon_name("edit-undo", Gtk.IconSize.MENU)
-        cancel_label = Gtk.Label.new("Cancel")
+        cancel_image = Gtk.Image.new_from_icon_name("edit-undo", Gtk.IconSize.MENU)  # type: ignore
+        cancel_label = Gtk.Label.new("Cancel")  # type: ignore
         cancel_box.pack_start(cancel_image, False, False, 0)
         cancel_box.pack_start(cancel_label, False, False, 8)
         cancel_item.add(cancel_box)
         cancel_item.show_all()
 
-        remove_item = Gtk.MenuItem()
+        remove_item = Gtk.MenuItem()  # type: ignore
         remove_item.connect("activate", lambda _: self.server_ask_remove(server))
         remove_box = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 0)  # type: ignore
-        remove_image = Gtk.Image.new_from_icon_name("edit-delete", Gtk.IconSize.MENU)
-        remove_label = Gtk.Label.new("Remove Server")
+        remove_image = Gtk.Image.new_from_icon_name("edit-delete", Gtk.IconSize.MENU)  # type: ignore
+        remove_label = Gtk.Label.new("Remove Server")  # type: ignore
         remove_box.pack_start(remove_image, False, False, 0)
         remove_box.pack_start(remove_label, False, False, 8)
         remove_item.add(remove_box)
         remove_item.show_all()
 
-        menu = Gtk.Menu()
+        menu = Gtk.Menu()  # type: ignore
         # Icons are already added so do not reserve extra space for them
         menu.set_reserve_toggle_size(0)  # type: ignore
         menu.append(remove_item)
@@ -976,7 +994,6 @@ For detailed information, see the following log files:
 
     def on_search_changed(self, _: Optional[SearchEntry] = None) -> None:
         query = self.find_server_search_input.get_text()
-        logger.debug(f"entered server search query: {query}")
         if self.app.variant.use_predefined_servers and query.count(".") < 2:
             results = self.app.model.search_predefined(query)
             search.update_results(self, results)
@@ -1029,9 +1046,12 @@ For detailed information, see the following log files:
                 return
             download = self.connection_info_stats.download
             upload = self.connection_info_stats.upload
+            protocol = self.connection_info_stats.protocol
             ipv4 = self.connection_info_stats.ipv4
             ipv6 = self.connection_info_stats.ipv6
             self.connection_info_downloaded.set_text(download)
+            self.connection_info_protocol.set_text(f"Protocol: <b>{GLib.markup_escape_text(protocol)}</b>")
+            self.connection_info_protocol.set_use_markup(True)
             self.connection_info_uploaded.set_text(upload)
             self.connection_info_ipv4address.set_text(ipv4)
             self.connection_info_ipv6address.set_text(ipv6)
@@ -1072,7 +1092,7 @@ For detailed information, see the following log files:
             title=_("Profile"),
             message_format=_("New profile selected"),
         )
-        dialog.add_buttons(
+        dialog.add_buttons(  # type: ignore
             _("Reconnect"), gtk_reconnect_id, _("Stay connected"), gtk_nop_id
         )
         dialog.format_secondary_text(_("Do you want to apply the new profile by reconnecting?"))  # type: ignore
@@ -1122,7 +1142,7 @@ For detailed information, see the following log files:
 
     def on_acknowledge_error(self, event):
         logger.debug("clicked on acknowledge error")
-        self.app.interface_transition("acknowledge_error")
+        # TODO: Handle this case
 
     def on_renew_session_clicked(self, event):
         logger.debug("clicked on renew session")
@@ -1143,13 +1163,12 @@ For detailed information, see the following log files:
 
     def on_close_window(self, window: "EduVpnGtkWindow", event: Event) -> bool:
         logger.debug("clicked on close window")
-        self.hide()
-        application = self.get_application()
+        self.hide()  # type: ignore
+        application = self.get_application()  # type: ignore
         if application:
             application.on_window_closed()  # type: ignore
         return True
 
     def on_reopen_window(self):
-        self.app.interface_transition("restart")
         self.show()
         self.present()

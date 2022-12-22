@@ -14,7 +14,6 @@ from eduvpn.settings import CONFIG_DIR_MODE
 from eduvpn.utils import run_in_background_thread, ui_transition, init_logger
 from eduvpn.variants import ApplicationVariant
 from eduvpn.ui.ui import EduVpnGtkWindow
-from eduvpn.ui.utils import get_validity_text
 from gi.repository.Gio import ApplicationCommandLine
 
 logger = logging.getLogger(__name__)
@@ -57,7 +56,7 @@ class EduVpnGtkApplication(Gtk.Application):
 
     def do_startup(self) -> None:
         logger.debug("startup")
-        Gtk.Application.do_startup(self)
+        Gtk.Application.do_startup(self)  # type: ignore
         i18n.initialize(self.app.variant)
         notify.initialize(self.app.variant)
         self.connection_notification = notify.Notification(self.app.variant)
@@ -93,7 +92,7 @@ class EduVpnGtkApplication(Gtk.Application):
 
         init_logger(self.debug, self.app.variant.logfile, CONFIG_DIR_MODE)
 
-        self.activate()
+        self.activate()  # type: ignore
         return 0
 
     def on_quit(self, action: None = None, _param: None = None) -> None:
@@ -104,45 +103,19 @@ class EduVpnGtkApplication(Gtk.Application):
         # Deregister is best effort
         except Exception as e:
             logger.debug("failed deregistering library", e)
-        self.quit()
+        self.quit()  # type: ignore
 
     def on_window_closed(self) -> None:
         logger.debug("window closed")
-        if not self.app.model.is_connected():
-            self.on_quit()
+        self.on_quit()
 
-    def enter_ClipboardError(self):
+    def enter_CopiedAnError(self):
         self.connection_notification.show(
             title=_("Error Copied"),
             message=_(
                 "The error message has been copied to your clipboard. "
                 "Report it at https://github.com/eduvpn/python-eduvpn-client if you think it is an issue."
             ),
-        )
-
-    def enter_Added(self, display_name):
-        self.connection_notification.show(
-            title=_("Added"),
-            message=_(
-                f"The server {display_name} has been added. "
-                "Connect to it by clicking on it."
-            ),
-        )
-
-    @ui_transition(State.CONNECTING, StateType.ENTER)
-    def enter_ConnectingState(self, old_state, new_state):
-        self.connection_notification.show(
-            title=_("Connecting"),
-            message=_(
-                "The connection is being established. "
-                "This should only take a moment."
-            ),
-        )
-
-    @ui_transition(State.CONNECTED, StateType.ENTER)
-    def enter_ConnectedState(self, old_state, new_state):
-        self.connection_notification.show(
-            title=_("Connected"), message=_("You are now connected to your server.")
         )
 
     def enter_SessionPendingExpiryState(self):
@@ -154,22 +127,9 @@ class EduVpnGtkApplication(Gtk.Application):
             ),
         )
 
-    @ui_transition(State.DISCONNECTED, StateType.ENTER)
-    def enter_DisconnectedState(self, old_state, server):
-        is_expired, _text = get_validity_text(
-            self.app.model.get_expiry(server.expire_time)
-        )
-        reason = ""
-        if is_expired:
-            reason = " due to expiry"
-        self.connection_notification.show(
-            title=_("Disconnected"),
-            message=_(f"You have been disconnected from your server{reason}."),
-        )
-
     def enter_SessionExpiredState(self):
         self.connection_notification.show(
-            title=_("Session expired"), message=_("Your session has expired.")
+            title=_("Session expired"), message=_("Your session has expired. You have been disconnected from the VPN.")
         )
 
         @run_in_background_thread("expired-deactivate")
