@@ -1,3 +1,9 @@
+python-eduvpn-client (3.2.0-0.2) unstable; urgency=medium
+
+  * Require eduvpn-common version between 0.2.0 and 0.3.0
+
+ -- Jeroen Wijenbergh <jeroen.wijenbergh@geant.org>  Thu, 22 Dec 2022 21:29:09 +0100
+
 python-eduvpn-client (3.2.0-0.1) unstable; urgency=medium
 
   * New pre-release version with the Go eduvpn-common library
