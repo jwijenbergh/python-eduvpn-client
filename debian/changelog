@@ -1,8 +1,8 @@
-python-eduvpn-client (3.2.0-1) stable; urgency=medium
+python-eduvpn-client (3.2.0-0.1) unstable; urgency=medium
 
-  * New version with Go
+  * New pre-release version with the Go eduvpn-common library
 
- -- Jeroen Wijenbergh <jeroen.wijenbergh@geant.org>  Wed, 05 Oct 2022 07:46:37 -0400
+ -- Jeroen Wijenbergh <jeroen.wijenbergh@geant.org>  Thu, 22 Dec 2022 12:04:28 +0100
 
 python-eduvpn-client (3.1.0-1) stable; urgency=medium
 
