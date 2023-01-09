@@ -149,55 +149,38 @@ class ApplicationModel:
             return -1
         return rx_bytes
 
-    def start_failover(self):
+    def start_failover(self) -> bool:
         current_vpn_protocol = self.nm_manager.protocol
         if current_vpn_protocol != "WireGuard":
             logger.debug(
                 f"Current protocol ({current_vpn_protocol}) does not support failover"
             )
-            return
+            return False
         try:
             rx_bytes_file = self.nm_manager.open_stats_file("rx_bytes")
             if rx_bytes_file is None:
                 logger.debug(
                     "Failed to initialize failover, failed to open rx bytes file"
                 )
-                return
+                return False
             endpoint = self.nm_manager.wg_endpoint_ip
             if endpoint is None:
                 logger.debug(
                     "Failed to initialize failover, failed to get WireGuard endpoint"
                 )
-                return
+                return False
             wg_mtu = self.nm_manager.wireguard_mtu
             if wg_mtu is None:
                 logger.debug(
                     "failed to get WireGuard MTU, setting MTU to 1000"
                 )
                 wg_mtu = 1000
-            dropped = self.common.start_failover(
+            return self.common.start_failover(
                 endpoint, wg_mtu, ReadRxBytes(lambda: self.get_failover_rx(rx_bytes_file))
             )
-            has_wireguard = nm.is_wireguard_supported()
-
-            def on_reconnected():
-                self.common.set_support_wireguard(has_wireguard)
-                # We re-do the failover process every reconnect
-                self.udp_blocked = False
-
-            if dropped:
-                logger.debug("Failover exited, connection is dropped")
-                if self.is_connected():
-                    has_wireguard = nm.is_wireguard_supported()
-
-                    # Set udp blocked and disable wireguard
-                    self.udp_blocked = True
-                    self.common.set_support_wireguard(False)
-                    self.reconnect(on_reconnected)
-            else:
-                logger.debug("Failover exited, connection is NOT dropped")
         except WrappedError as e:
             logger.debug(f"Failed to start failover, error: {e}")
+            return False
 
     def cancel_failover(self):
         try:
@@ -254,7 +237,7 @@ class ApplicationModel:
         # Delete tokens from the keyring
         self.clear_tokens(server)
 
-    def connect_get_config(self, server, tokens=None) -> Optional[Config]:
+    def connect_get_config(self, server, tokens=None, prefer_tcp=False) -> Optional[Config]:
         # We prefer TCP if the user has set it or UDP is determined to be blocked
         prefer_tcp = self.udp_blocked
         if isinstance(server, InstituteServer):
@@ -324,7 +307,7 @@ class ApplicationModel:
             logger.debug(e, exc_info=True)
 
     def connect(
-        self, server, callback: Optional[Callable] = None, ensure_exists=False
+        self, server, callback: Optional[Callable] = None, ensure_exists=False, prefer_tcp=False
     ) -> None:
         config = None
         config_type = None
@@ -332,7 +315,7 @@ class ApplicationModel:
             self.add(server)
 
         tokens = self.load_tokens(server)
-        config = self.connect_get_config(server, tokens)
+        config = self.connect_get_config(server, tokens, prefer_tcp)
         if not config:
             raise Exception("No configuration available")
 
@@ -347,10 +330,29 @@ class ApplicationModel:
         if server.profiles is not None and server.profiles.current is not None:
             default_gateway = server.profiles.current.default_gateway
 
+        @run_in_background_thread('connected')
         def on_connected():
-            self.common.set_connected()
-            if callback:
-                callback()
+            dropped = self.start_failover()
+            # We are not dropped or prefer TCP was already passed as True
+            if not dropped or prefer_tcp:
+                self.common.set_connected()
+                if callback:
+                    callback()
+                return
+            has_wireguard = nm.is_wireguard_supported()
+            self.common.set_support_wireguard(False)
+
+            def on_reconnected():
+                # Restore wireguard setting
+                self.common.set_support_wireguard(has_wireguard)
+                if callback:
+                    callback()
+
+            def on_disconnected():
+                self.connect(server, on_reconnected, ensure_exists, True)
+
+            self.disconnect(on_disconnected)
+
 
         def on_connect(_):
             self.nm_manager.activate_connection(on_connected)
@@ -483,7 +485,8 @@ class Application:
         try:
             if state == nm.ConnectionState.CONNECTED:
                 if self.model.is_connecting() or initial:
-                    self.common.set_connected()
+                    pass
+                    #self.common.set_connected()
             elif state == nm.ConnectionState.CONNECTING:
                 if self.model.is_disconnected():
                     self.common.set_connecting()

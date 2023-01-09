@@ -799,7 +799,7 @@ For detailed information, see the log file located at:
         self.update_connection_status(True)
         self.update_connection_server(server_info)
         self.start_validity_renew(server_info)
-        self.call_model("start_failover")
+        #self.call_model("start_failover")
 
     def start_validity_renew(self, server_info) -> None:
         self.connection_validity_thread_cancel = run_periodically(
