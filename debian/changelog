@@ -1,3 +1,9 @@
+python-eduvpn-client (3.3.0-0.1) unstable; urgency=medium
+
+  * New upstream pre-release version 3.3.0
+
+ -- Jeroen Wijenbergh <jeroen.wijenbergh@geant.org>  Wed, 01 Feb 2023 14:26:40 +0100
+
 python-eduvpn-client (3.2.0-0.2) unstable; urgency=medium
 
   * Require eduvpn-common version between 0.2.0 and 0.3.0
