@@ -4,10 +4,10 @@
 set -e
 
 # Fetch the source remote
-git fetch fork
+git fetch origin
 
 # Checkout source main with detached head
-git checkout fork/incorporate-go@{0}
+git checkout origin/master@{0}
 
 # Reset to main branch with unstaged changes
 git reset --soft debian
