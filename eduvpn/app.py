@@ -1,30 +1,35 @@
 import json
 import logging
-import webbrowser
 import signal
 import sys
+import webbrowser
 from datetime import datetime
-from typing import Any, Callable, Iterator, Optional
+from typing import Any, Callable, Iterator, List, Optional, TextIO
+
 from eduvpn_common.discovery import DiscoOrganization, DiscoServer
 from eduvpn_common.error import WrappedError
 from eduvpn_common.main import EduVPN
-from eduvpn_common.server import Server, InstituteServer, SecureInternetServer, Config, Token
-from eduvpn_common.types import ReadRxBytes
+from eduvpn_common.server import (
+    Config,
+    InstituteServer,
+    SecureInternetServer,
+    Server,
+    Token,
+)
 from eduvpn_common.state import State, StateType
-from eduvpn.keyring import DBusKeyring, InsecureFileKeyring, TokenKeyring
-from eduvpn.server import ServerDatabase
-
-from eduvpn.connection import Connection, Validity
+from eduvpn_common.types import ReadRxBytes
 
 from eduvpn import nm
 from eduvpn.config import Configuration
+from eduvpn.connection import Connection, Validity
+from eduvpn.keyring import DBusKeyring, InsecureFileKeyring, TokenKeyring
+from eduvpn.server import ServerDatabase
 from eduvpn.utils import (
     model_transition,
     run_in_background_thread,
     run_in_main_gtk_thread,
 )
 from eduvpn.variants import ApplicationVariant
-from typing import List, TextIO
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +133,6 @@ class ApplicationModel:
         self.transitions = ApplicationModelTransitions(common, variant)
         self.variant = variant
         self.nm_manager = nm_manager
-        self.udp_blocked = False
         self.common.register_class_callbacks(self)
 
     @property
@@ -149,55 +153,65 @@ class ApplicationModel:
             return -1
         return rx_bytes
 
-    def start_failover(self):
+    def should_failover(self):
         current_vpn_protocol = self.nm_manager.protocol
         if current_vpn_protocol != "WireGuard":
             logger.debug(
                 f"Current protocol ({current_vpn_protocol}) does not support failover"
             )
-            return
+            return False
+        return True
+
+    def start_failover(self, callback: Callable):
         try:
             rx_bytes_file = self.nm_manager.open_stats_file("rx_bytes")
             if rx_bytes_file is None:
                 logger.debug(
                     "Failed to initialize failover, failed to open rx bytes file"
                 )
+                callback(False)
                 return
             endpoint = self.nm_manager.wg_endpoint_ip
             if endpoint is None:
                 logger.debug(
                     "Failed to initialize failover, failed to get WireGuard endpoint"
                 )
+                callback(False)
                 return
             wg_mtu = self.nm_manager.wireguard_mtu
             if wg_mtu is None:
-                logger.debug(
-                    "failed to get WireGuard MTU, setting MTU to 1000"
-                )
+                logger.debug("failed to get WireGuard MTU, setting MTU to 1000")
                 wg_mtu = 1000
             dropped = self.common.start_failover(
-                endpoint, wg_mtu, ReadRxBytes(lambda: self.get_failover_rx(rx_bytes_file))
+                endpoint,
+                wg_mtu,
+                ReadRxBytes(lambda: self.get_failover_rx(rx_bytes_file)),
             )
             has_wireguard = nm.is_wireguard_supported()
 
             def on_reconnected():
                 self.common.set_support_wireguard(has_wireguard)
-                # We re-do the failover process every reconnect
-                self.udp_blocked = False
+                callback(True)
 
             if dropped:
                 logger.debug("Failover exited, connection is dropped")
                 if self.is_connected():
                     has_wireguard = nm.is_wireguard_supported()
 
-                    # Set udp blocked and disable wireguard
-                    self.udp_blocked = True
+                    # Disable wireguard
                     self.common.set_support_wireguard(False)
-                    self.reconnect(on_reconnected)
+                    self.reconnect(on_reconnected, prefer_tcp=True)
+                # Dropped but not relevant anymore
+                callback(False)
+                return
             else:
                 logger.debug("Failover exited, connection is NOT dropped")
+                callback(False)
+                return
         except WrappedError as e:
             logger.debug(f"Failed to start failover, error: {e}")
+            callback(False)
+            return
 
     def cancel_failover(self):
         try:
@@ -254,9 +268,10 @@ class ApplicationModel:
         # Delete tokens from the keyring
         self.clear_tokens(server)
 
-    def connect_get_config(self, server, tokens=None) -> Optional[Config]:
+    def connect_get_config(
+        self, server, tokens=None, prefer_tcp: bool = False
+    ) -> Optional[Config]:
         # We prefer TCP if the user has set it or UDP is determined to be blocked
-        prefer_tcp = self.config.prefer_tcp or self.udp_blocked
         if isinstance(server, InstituteServer):
             return self.common.get_config_institute_access(
                 server.url, prefer_tcp, tokens
@@ -272,9 +287,7 @@ class ApplicationModel:
                 server.org_id, prefer_tcp, tokens
             )
         elif isinstance(server, Server):
-            return self.common.get_config_custom_server(
-                server.url, prefer_tcp, tokens
-            )
+            return self.common.get_config_custom_server(server.url, prefer_tcp, tokens)
         raise Exception("No server to get a config for")
 
     def clear_tokens(self, server):
@@ -291,10 +304,7 @@ class ApplicationModel:
             logger.debug(e, exc_info=True)
 
     def load_tokens(self, server) -> Optional[Token]:
-        attributes = {
-            "server": server.url,
-            "category": server.category
-        }
+        attributes = {"server": server.url, "category": server.category}
         try:
             tokens_json = self.keyring.load(attributes)
             if tokens_json is None:
@@ -324,7 +334,11 @@ class ApplicationModel:
             logger.debug(e, exc_info=True)
 
     def connect(
-        self, server, callback: Optional[Callable] = None, ensure_exists=False
+        self,
+        server,
+        callback: Optional[Callable] = None,
+        ensure_exists=False,
+        prefer_tcp: bool = False,
     ) -> None:
         config = None
         config_type = None
@@ -332,7 +346,7 @@ class ApplicationModel:
             self.add(server)
 
         tokens = self.load_tokens(server)
-        config = self.connect_get_config(server, tokens)
+        config = self.connect_get_config(server, tokens, prefer_tcp=prefer_tcp)
         if not config:
             raise Exception("No configuration available")
 
@@ -363,13 +377,13 @@ class ApplicationModel:
         self.common.set_connecting()
         connect(config, config_type)
 
-    def reconnect(self, callback: Optional[Callable] = None):
+    def reconnect(self, callback: Optional[Callable] = None, prefer_tcp: bool = False):
         def on_connected():
             if callback:
                 callback()
 
         def on_disconnected():
-            self.activate_connection(on_connected)
+            self.activate_connection(on_connected, prefer_tcp=prefer_tcp)
 
         # Reconnect
         self.deactivate_connection(on_disconnected)
@@ -414,24 +428,55 @@ class ApplicationModel:
         else:
             do_profile()
 
-    def activate_connection(self, callback: Optional[Callable] = None):
+    def activate_connection(
+        self, callback: Optional[Callable] = None, prefer_tcp: bool = False
+    ):
         if not self.current_server:
             return
 
-        self.connect(self.current_server, callback)
+        self.connect(self.current_server, callback, prefer_tcp=prefer_tcp)
+
+    def cleanup(self):
+        tokens = None
+
+        # We retry this cleanup 2 times
+        retries = 2
+
+        # Try to get the tokens
+        server = self.current_server
+        if server:
+            tokens = self.load_tokens(server)
+        else:
+            logger.warning("Unable to get tokens for /disconnect, no server")
+            return
+
+        # Try to cleanup with a number of retries
+        for i in range(retries):
+            logger.debug("Cleaning up tokens...")
+            try:
+                self.common.cleanup(tokens)
+            except Exception:
+                # We can try again
+                if i < retries - 1:
+                    logger.debug(
+                        f"Got an error while cleaning up, try number: {i+1}. This could mean the connection was not fully disconnected yet. Trying again..."
+                    )
+                else:
+                    # All retries are done
+                    logger.warning(
+                        f"Got an error while cleaning up, after full retries: {i+1}."
+                    )
+            else:
+                break
 
     def deactivate_connection(self, callback: Optional[Callable] = None) -> None:
         self.common.set_disconnecting()
 
         @run_in_background_thread("on-disconnected")
         def on_disconnected():
-            server = self.current_server
-            tokens = None
-            if server:
-                tokens = self.load_tokens(server)
-            else:
-                logger.warning("Unable to get tokens for /disconnect, no server")
-            self.common.set_disconnected(True, tokens)
+            # Cleanup the connection by sending / disconnect
+            self.cleanup()
+            self.common.set_disconnected()
             if callback:
                 callback()
 
@@ -482,6 +527,9 @@ class Application:
     def on_network_update_callback(self, state, initial=False):
         try:
             if state == nm.ConnectionState.CONNECTED:
+                # Already connected
+                if self.model.is_connected():
+                    return
                 if self.model.is_connecting() or initial:
                     self.common.set_connected()
             elif state == nm.ConnectionState.CONNECTING:
@@ -490,7 +538,7 @@ class Application:
             elif state == nm.ConnectionState.DISCONNECTED:
                 if self.model.is_connected():
                     self.common.set_disconnecting()
-                    self.common.set_disconnected(cleanup=False)
+                    self.common.set_disconnected()
         except Exception:
             return
 

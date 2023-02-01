@@ -1,16 +1,17 @@
-import gi
-
 from gettext import gettext as _
 from gettext import ngettext
+
+import gi
+from eduvpn_common.error import ErrorLevel, WrappedError
+
 from eduvpn.connection import Validity
-from eduvpn_common.error import WrappedError, ErrorLevel
 from eduvpn.utils import run_in_main_gtk_thread
 
 gi.require_version("Gtk", "3.0")  # noqa: E402
-from gi.repository import Gtk  # type: ignore
-from gi.overrides.Gtk import Widget  # type: ignore
 from typing import Tuple
 
+from gi.overrides.Gtk import Widget  # type: ignore
+from gi.repository import Gtk  # type: ignore
 
 IGNORE_ID = -13
 QUIT_ID = -14
@@ -23,29 +24,6 @@ def style_widget(widget: Gtk.Widget, class_name: str, style: str):
     provider.load_from_data(f".{class_name} {{{style}}}".encode("utf-8"))
     style_context.add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
     style_context.add_class(class_name.split(":")[0])
-
-
-@run_in_main_gtk_thread
-def style_tree_view(window, tree_view):
-    # Get the background from the window to 'blend' the tree view
-    style_context = window.get_style_context()
-    background = style_context.get_background_color(Gtk.StateFlags.NORMAL).to_string()
-    # grayish
-    bordercolor = "#B2BEB5"
-    # Organgeish in the style of the eduVPN logo
-    background_hl = "#E24301"
-    # Plain white
-    textcolor_hl = "#ffffff"
-    style_widget(
-        tree_view,
-        "TreeView",
-        f"background-color: {background}; border-top-color: {bordercolor};",
-    )
-    style_widget(
-        tree_view,
-        "TreeView:hover",
-        f"color: {textcolor_hl}; background-color: {background_hl}; border-top-color: {bordercolor}",
-    )
 
 
 def should_show_error(error: Exception):
@@ -125,7 +103,7 @@ def link_markup(link: str) -> str:
 
 @run_in_main_gtk_thread
 def show_error_dialog(
-        parent, name: str, title: str, message: str, only_quit: bool = False
+    parent, name: str, title: str, message: str, only_quit: bool = False
 ):
     dialog = Gtk.MessageDialog(  # type: ignore
         parent=parent,

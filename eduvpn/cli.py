@@ -1,27 +1,29 @@
 # readline is used! It is for going up and down in interactive mode
+import argparse
 import readline  # noqa: W0611
-from eduvpn.app import Application
-from eduvpn.utils import cmd_transition, init_logger, run_in_background_thread
-from eduvpn.ui.search import ServerGroup, group_servers
-from eduvpn.ui.utils import get_validity_text, should_show_error
+import signal
+import sys
+from typing import Callable
+
+import eduvpn_common.main as common
+from eduvpn_common.server import InstituteServer, SecureInternetServer, Server
+from eduvpn_common.state import State, StateType
+
 import eduvpn.nm as nm
+from eduvpn.app import Application
 from eduvpn.i18n import country, retrieve_country_name
 from eduvpn.server import ServerDatabase
 from eduvpn.settings import (
     CLIENT_ID,
-    CONFIG_PREFIX,
     CONFIG_DIR_MODE,
+    CONFIG_PREFIX,
     LETSCONNECT_CLIENT_ID,
     LETSCONNECT_CONFIG_PREFIX,
 )
-from eduvpn.variants import ApplicationVariant, EDUVPN, LETS_CONNECT
-import eduvpn_common.main as common
-from eduvpn_common.server import Server, InstituteServer, SecureInternetServer
-from eduvpn_common.state import State, StateType
-
-import argparse
-import signal
-import sys
+from eduvpn.ui.search import ServerGroup, group_servers
+from eduvpn.ui.utils import get_validity_text, should_show_error
+from eduvpn.utils import cmd_transition, init_logger, run_in_background_thread
+from eduvpn.variants import EDUVPN, LETS_CONNECT, ApplicationVariant
 
 
 def get_grouped_index(servers, index):
@@ -152,6 +154,21 @@ class CommandLine:
 
         return self.ask_server_input(servers)
 
+    def start_failover(self, callback: Callable):
+        if not self.app.model.should_failover():
+            callback()
+            return
+
+        def on_reconnected(dropped):
+            if dropped:
+                print(
+                    "We have switched to a new VPN protocol as the previous protocol was blocked"
+                )
+            callback()
+
+        print("Connected, but we are testing your VPN if it can reach the internet...")
+        self.app.model.start_failover(on_reconnected)
+
     def connect_server(self, server):
         def connect(callback=None):
             @run_in_background_thread("connect")
@@ -159,7 +176,11 @@ class CommandLine:
                 try:
                     # Connect to the server and ensure it exists
                     should_add = not self.server_db.has(server)
-                    self.app.model.connect(server, callback, ensure_exists=should_add)
+                    self.app.model.connect(
+                        server,
+                        lambda: self.start_failover(callback),
+                        ensure_exists=should_add,
+                    )
                 except Exception as e:
                     if should_show_error(e):
                         print("Error connecting:", e, file=sys.stderr)

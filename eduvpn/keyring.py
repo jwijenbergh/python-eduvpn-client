@@ -1,7 +1,9 @@
-from abc import ABC, abstractmethod
-import os
-import gi
 import json
+import logging
+import os
+from abc import ABC, abstractmethod
+
+import gi
 
 secureKeyring = True
 try:
@@ -9,6 +11,9 @@ try:
     from gi.repository import Secret  # type: ignore
 except (ValueError, ImportError):
     secureKeyring = False
+
+
+logger = logging.getLogger(__name__)
 
 
 class TokenKeyring(ABC):
@@ -38,6 +43,7 @@ class TokenKeyring(ABC):
 
 class DBusKeyring(TokenKeyring):
     """A keyring using libsecret with DBus"""
+
     def __init__(self, variant):
         super().__init__(variant)
         # None is the default collection
@@ -51,6 +57,7 @@ class DBusKeyring(TokenKeyring):
     def available(self):
         # If import was not successful, this is definitely not available
         if not secureKeyring:
+            logger.warning("keyring not available due to import not available")
             return False
 
         # Libs available, do a test run
@@ -60,14 +67,17 @@ class DBusKeyring(TokenKeyring):
             self.save("eduVPN testing run", attributes, secret)
             assert self.load(attributes) == secret
             self.clear(attributes)
-        except (gi.repository.GLib.Error, AssertionError):
+        except (gi.repository.GLib.Error, AssertionError) as e:
+            logger.warning(f"error when checking if keyring is available: {e}")
             return False
         return True
 
     def create_schema(self, attributes):
-        return Secret.Schema.new(self.variant.name, Secret.SchemaFlags.NONE, {
-            k: Secret.SchemaAttributeType.STRING
-            for k in attributes})
+        return Secret.Schema.new(
+            self.variant.name,
+            Secret.SchemaFlags.NONE,
+            {k: Secret.SchemaAttributeType.STRING for k in attributes},
+        )
 
     def clear(self, attributes) -> bool:
         schema = self.create_schema(attributes)
@@ -78,8 +88,8 @@ class DBusKeyring(TokenKeyring):
         label = f"{self.variant.name} - {label}"
         schema = self.create_schema(attributes)
         return Secret.password_store_sync(
-            schema, attributes, self.collection, label,
-            str(secret), None)
+            schema, attributes, self.collection, label, str(secret), None
+        )
 
     def load(self, attributes):
         """Load a password in the secret service, return None when found nothing"""

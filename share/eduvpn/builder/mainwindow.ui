@@ -52,7 +52,7 @@
                       <object class="GtkImage" id="backButton">
                         <property name="visible">True</property>
                         <property name="can-focus">False</property>
-                        <property name="pixbuf">../images/back.png</property>
+                        <property name="icon-name">go-previous</property>
                       </object>
                     </child>
                   </object>
@@ -72,31 +72,13 @@
                       <object class="GtkEventBox">
                         <property name="visible">True</property>
                         <property name="can-focus">False</property>
-                        <signal name="button-press-event" handler="on_configure_settings" swapped="no"/>
+                        <signal name="button-press-event" handler="on_info_press_event" swapped="no"/>
                         <child>
-                          <object class="GtkImage" id="settingsButton">
-                            <property name="visible">True</property>
-                            <property name="can-focus">False</property>
-                            <property name="pixbuf">../images/settings.png</property>
-                          </object>
-                        </child>
-                      </object>
-                      <packing>
-                        <property name="expand">False</property>
-                        <property name="fill">True</property>
-                        <property name="position">0</property>
-                      </packing>
-                    </child>
-                    <child>
-                      <object class="GtkEventBox">
-                        <property name="visible">True</property>
-                        <property name="can-focus">False</property>
-                        <signal name="button-release-event" handler="on_get_help" swapped="no"/>
-                        <child>
-                          <object class="GtkImage" id="helpButton">
+                          <object class="GtkImage" id="infoButton">
                             <property name="visible">True</property>
                             <property name="can-focus">False</property>
                             <property name="pixbuf">../images/question-icon.png</property>
+                            <property name="icon_size">3</property>
                           </object>
                         </child>
                       </object>
@@ -254,7 +236,7 @@
                             <property name="can-focus">False</property>
                             <property name="spacing">15</property>
                             <child>
-                              <object class="GtkImage">
+                              <object class="GtkImage" id="instituteIcon">
                                 <property name="visible">True</property>
                                 <property name="can-focus">False</property>
                                 <property name="margin-left">2</property>
@@ -326,7 +308,7 @@
                             <property name="can-focus">False</property>
                             <property name="spacing">15</property>
                             <child>
-                              <object class="GtkImage">
+                              <object class="GtkImage" id="earthIcon">
                                 <property name="visible">True</property>
                                 <property name="can-focus">False</property>
                                 <property name="margin-left">2</property>
@@ -411,7 +393,7 @@
                             <property name="can-focus">False</property>
                             <property name="spacing">15</property>
                             <child>
-                              <object class="GtkImage">
+                              <object class="GtkImage" id="serverIcon">
                                 <property name="visible">True</property>
                                 <property name="can-focus">False</property>
                                 <property name="margin-left">2</property>
@@ -802,11 +784,49 @@
                       </packing>
                     </child>
                     <child>
+                      <object class="GtkBox" id="failoverText">
+                        <property name="can-focus">False</property>
+                        <property name="halign">center</property>
+                        <property name="margin-start">50</property>
+                        <property name="margin-end">50</property>
+                        <child>
+                          <object class="GtkImage">
+                            <property name="visible">True</property>
+                            <property name="can-focus">False</property>
+                            <property name="icon-name">dialog-information</property>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="padding">3</property>
+                            <property name="position">0</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkLabel" id="failoverLabel">
+                            <property name="visible">True</property>
+                            <property name="can-focus">False</property>
+                            <property name="label" translatable="yes"></property>
+                            <property name="wrap">True</property>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">1</property>
+                          </packing>
+                        </child>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">10</property>
+                      </packing>
+                    </child>
+                    <child>
                       <object class="GtkExpander" id="connectionInfoExpander">
                         <property name="visible">True</property>
                         <property name="can-focus">True</property>
                         <property name="halign">center</property>
-                        <property name="margin-top">45</property>
                         <signal name="activate" handler="on_toggle_connection_info" swapped="no"/>
                         <child>
                           <object class="GtkFrame">
@@ -995,7 +1015,7 @@
                       <packing>
                         <property name="expand">False</property>
                         <property name="fill">False</property>
-                        <property name="position">10</property>
+                        <property name="position">11</property>
                       </packing>
                     </child>
                   </object>
@@ -1056,73 +1076,100 @@
                     <property name="position">5</property>
                   </packing>
                 </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="index">-1</property>
+          </packing>
+        </child>
+      </object>
+    </child>
+  </object>
+  <object class="GtkDialog" id="infoDialog">
+    <property name="can-focus">False</property>
+    <property name="title" translatable="yes">eduVPN info</property>
+    <property name="type-hint">dialog</property>
+    <signal name="delete-event" handler="on_info_delete" swapped="no"/>
+    <child internal-child="vbox">
+      <object class="GtkBox">
+        <property name="can-focus">False</property>
+        <property name="margin-start">10</property>
+        <property name="margin-end">10</property>
+        <property name="margin-top">5</property>
+        <property name="margin-bottom">5</property>
+        <property name="orientation">vertical</property>
+        <property name="spacing">15</property>
+        <child internal-child="action_area">
+          <object class="GtkButtonBox">
+            <property name="can-focus">False</property>
+            <property name="layout-style">end</property>
+            <child>
+              <placeholder/>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">False</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="label" translatable="yes">About</property>
+                <attributes>
+                  <attribute name="weight" value="bold"/>
+                  <attribute name="size" value="12288"/>
+                </attributes>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkBox">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="orientation">vertical</property>
                 <child>
-                  <object class="GtkBox" id="errorPage">
+                  <object class="GtkImage" id="appLogoInfo1">
+                    <property name="width-request">120</property>
+                    <property name="height-request">36</property>
                     <property name="visible">True</property>
                     <property name="can-focus">False</property>
-                    <property name="valign">center</property>
-                    <property name="orientation">vertical</property>
-                    <property name="spacing">10</property>
-                    <child>
-                      <object class="GtkLabel">
-                        <property name="visible">True</property>
-                        <property name="can-focus">False</property>
-                        <property name="label" translatable="yes">Error</property>
-                        <attributes>
-                          <attribute name="weight" value="bold"/>
-                        </attributes>
-                      </object>
-                      <packing>
-                        <property name="expand">False</property>
-                        <property name="fill">True</property>
-                        <property name="position">0</property>
-                      </packing>
-                    </child>
-                    <child>
-                      <object class="GtkLabel" id="errorText">
-                        <property name="visible">True</property>
-                        <property name="can-focus">False</property>
-                        <property name="label" translatable="yes">General failure, please quit</property>
-                        <property name="justify">center</property>
-                        <property name="wrap">True</property>
-                      </object>
-                      <packing>
-                        <property name="expand">False</property>
-                        <property name="fill">True</property>
-                        <property name="position">1</property>
-                      </packing>
-                    </child>
-                    <child>
-                      <object class="GtkButton" id="errorAcknowledgeButton">
-                        <property name="label" translatable="yes">Ok</property>
-                        <property name="visible">True</property>
-                        <property name="can-focus">True</property>
-                        <property name="receives-default">True</property>
-                        <property name="halign">center</property>
-                        <signal name="clicked" handler="on_acknowledge_error" swapped="no"/>
-                      </object>
-                      <packing>
-                        <property name="expand">False</property>
-                        <property name="fill">False</property>
-                        <property name="position">2</property>
-                      </packing>
-                    </child>
+                    <property name="pixbuf">../images/edu-vpn-logo.png</property>
                   </object>
                   <packing>
-                    <property name="position">6</property>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">0</property>
                   </packing>
                 </child>
                 <child>
-                  <object class="GtkBox" id="settingsPage">
+                  <object class="GtkBox">
                     <property name="visible">True</property>
                     <property name="can-focus">False</property>
-                    <property name="valign">start</property>
-                    <property name="orientation">vertical</property>
+                    <property name="spacing">5</property>
                     <child>
                       <object class="GtkLabel">
                         <property name="visible">True</property>
                         <property name="can-focus">False</property>
-                        <property name="label" translatable="yes">Settings</property>
+                        <property name="margin-top">5</property>
+                        <property name="label" translatable="yes">Linux client version:</property>
                       </object>
                       <packing>
                         <property name="expand">False</property>
@@ -1131,85 +1178,10 @@
                       </packing>
                     </child>
                     <child>
-                      <!-- n-columns=2 n-rows=3 -->
-                      <object class="GtkGrid">
+                      <object class="GtkLabel" id="infoVersion">
                         <property name="visible">True</property>
                         <property name="can-focus">False</property>
-                        <child>
-                          <object class="GtkLabel">
-                            <property name="visible">True</property>
-                            <property name="can-focus">False</property>
-                            <property name="halign">start</property>
-                            <property name="label" translatable="yes">All users may connect to the VPN network</property>
-                          </object>
-                          <packing>
-                            <property name="left-attach">0</property>
-                            <property name="top-attach">0</property>
-                          </packing>
-                        </child>
-                        <child>
-                          <object class="GtkSwitch" id="settingConfigNMSystemWide">
-                            <property name="visible">True</property>
-                            <property name="can-focus">True</property>
-                            <property name="halign">end</property>
-                            <property name="hexpand">True</property>
-                            <signal name="state-set" handler="on_config_nm_system_wide" swapped="no"/>
-                          </object>
-                          <packing>
-                            <property name="left-attach">1</property>
-                            <property name="top-attach">0</property>
-                          </packing>
-                        </child>
-                        <child>
-                          <object class="GtkLabel">
-                            <property name="visible">True</property>
-                            <property name="can-focus">False</property>
-                            <property name="halign">start</property>
-                            <property name="label" translatable="yes">Prefer to use TCP for the VPN</property>
-                          </object>
-                          <packing>
-                            <property name="left-attach">0</property>
-                            <property name="top-attach">2</property>
-                          </packing>
-                        </child>
-                        <child>
-                          <object class="GtkSwitch" id="settingConfigPreferTCP">
-                            <property name="visible">True</property>
-                            <property name="can-focus">True</property>
-                            <property name="halign">end</property>
-                            <property name="hexpand">True</property>
-                            <signal name="state-set" handler="on_config_prefer_tcp" swapped="no"/>
-                          </object>
-                          <packing>
-                            <property name="left-attach">1</property>
-                            <property name="top-attach">2</property>
-                          </packing>
-                        </child>
-                        <child>
-                          <object class="GtkSwitch" id="settingConfigAutoconnect">
-                            <property name="visible">True</property>
-                            <property name="can-focus">True</property>
-                            <property name="halign">end</property>
-                            <property name="hexpand">True</property>
-                            <signal name="state-set" handler="on_config_autoconnect" swapped="no"/>
-                          </object>
-                          <packing>
-                            <property name="left-attach">1</property>
-                            <property name="top-attach">1</property>
-                          </packing>
-                        </child>
-                        <child>
-                          <object class="GtkLabel">
-                            <property name="visible">True</property>
-                            <property name="can-focus">False</property>
-                            <property name="halign">start</property>
-                            <property name="label" translatable="yes">Automatically connect to the Server after adding it</property>
-                          </object>
-                          <packing>
-                            <property name="left-attach">0</property>
-                            <property name="top-attach">1</property>
-                          </packing>
-                        </child>
+                        <property name="margin-top">5</property>
                       </object>
                       <packing>
                         <property name="expand">False</property>
@@ -1219,7 +1191,9 @@
                     </child>
                   </object>
                   <packing>
-                    <property name="position">7</property>
+                    <property name="expand">False</property>
+                    <property name="fill">False</property>
+                    <property name="position">1</property>
                   </packing>
                 </child>
               </object>
@@ -1231,7 +1205,122 @@
             </child>
           </object>
           <packing>
-            <property name="index">-1</property>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">1</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="label" translatable="yes">Support</property>
+                <attributes>
+                  <attribute name="weight" value="bold"/>
+                  <attribute name="size" value="12288"/>
+                </attributes>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">True</property>
+                <property name="halign">start</property>
+                <property name="label" translatable="yes">You can contact your organization by going to the following page:
+ &lt;a href="https://status.eduvpn.org/"&gt;eduVPN contact status page&lt;/a&gt;.</property>
+                <property name="use-markup">True</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">False</property>
+                <property name="padding">5</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">2</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="label" translatable="yes">Reporting issues</property>
+                <attributes>
+                  <attribute name="weight" value="bold"/>
+                  <attribute name="size" value="12288"/>
+                </attributes>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkBox">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="orientation">vertical</property>
+                <child>
+                  <object class="GtkLabel">
+                    <property name="visible">True</property>
+                    <property name="can-focus">True</property>
+                    <property name="halign">start</property>
+                    <property name="label" translatable="yes">If you have found a bug/issue with the client itself,
+you can report an issue on the &lt;a href="https://github.com/eduvpn/eduvpn-common"&gt;GitHub repository&lt;/a&gt;.
+Make sure to include the log file if applicable, which is available
+at the following location:</property>
+                    <property name="use-markup">True</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">False</property>
+                    <property name="padding">5</property>
+                    <property name="position">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="infoLogLocation">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">1</property>
+                  </packing>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">3</property>
           </packing>
         </child>
       </object>

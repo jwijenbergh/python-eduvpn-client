@@ -5,33 +5,27 @@
 
 import logging
 import os
-import webbrowser
 from gettext import gettext as _
-from typing import Callable, Type, Optional
+from typing import Callable, Optional, Type
 
 import gi
 
 gi.require_version("Gtk", "3.0")  # noqa: E402
 gi.require_version("NM", "1.0")  # noqa: E402
+from datetime import datetime
 from functools import partial
 
 from eduvpn_common.state import State, StateType
+from gi.overrides.Gdk import Event, EventButton  # type: ignore
+from gi.overrides.Gtk import TreePath  # type: ignore
+from gi.overrides.Gtk import Box, Builder, Button, TreeView, TreeViewColumn
 from gi.repository import Gdk, GdkPixbuf, GLib, GObject, Gtk
+from gi.repository.Gtk import EventBox, SearchEntry, Switch  # type: ignore
 
-from eduvpn.server import StatusImage
-from eduvpn.settings import FLAG_PREFIX
+from eduvpn import __version__
 from eduvpn.i18n import retrieve_country_name
-from eduvpn.settings import HELP_URL
-from eduvpn.utils import (
-    ERROR_STATE,
-    get_prefix,
-    get_ui_state,
-    log_exception,
-    run_in_main_gtk_thread,
-    run_in_background_thread,
-    run_periodically,
-    ui_transition,
-)
+from eduvpn.server import StatusImage
+from eduvpn.settings import FLAG_PREFIX, IMAGE_PREFIX
 from eduvpn.ui import search
 from eduvpn.ui.stats import NetworkStats
 from eduvpn.ui.utils import (
@@ -41,13 +35,18 @@ from eduvpn.ui.utils import (
     should_show_error,
     show_error_dialog,
     show_ui_component,
-    style_tree_view,
     style_widget,
 )
-from datetime import datetime
-from gi.overrides.Gdk import Event, EventButton  # type: ignore
-from gi.overrides.Gtk import Box, Builder, Button, TreePath, TreeView, TreeViewColumn  # type: ignore
-from gi.repository.Gtk import EventBox, SearchEntry, Switch  # type: ignore
+from eduvpn.utils import (
+    ERROR_STATE,
+    get_prefix,
+    get_ui_state,
+    log_exception,
+    run_in_background_thread,
+    run_in_main_gtk_thread,
+    run_periodically,
+    ui_transition,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +67,21 @@ def get_template_path(filename: str) -> str:
     return os.path.join(get_prefix(), "share/eduvpn/builder", filename)
 
 
+def get_images_path(filename: str) -> str:
+    return os.path.join(IMAGE_PREFIX, filename)
+
+
+# See:
+# https://www.w3.org/TR/AERT/#color-contrast
+# And https://stackoverflow.com/a/946734
+# For how I came up with these magic values :^)
+def is_dark(rgb):
+    red = rgb.red * 255
+    green = rgb.green * 255
+    blue = rgb.blue * 255
+    return (red * 0.299 + green * 0.587 + blue * 0.114) <= 186
+
+
 class EduVpnGtkWindow(Gtk.ApplicationWindow):
     __gtype_name__ = "EduVpnGtkWindow"
 
@@ -86,8 +100,8 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         self.app = self.eduvpn_app.app  # type: ignore
         self.common = self.eduvpn_app.common
         handlers = {
-            "on_configure_settings": self.on_configure_settings,
-            "on_get_help": self.on_get_help,
+            "on_info_delete": self.on_info_delete,
+            "on_info_press_event": self.on_info_button,
             "on_go_back": self.on_go_back,
             "on_add_other_server": self.on_add_other_server,
             "on_add_custom_server": self.on_add_custom_server,
@@ -104,12 +118,25 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
             "on_location_row_activated": self.on_location_row_activated,
             "on_acknowledge_error": self.on_acknowledge_error,
             "on_renew_session_clicked": self.on_renew_session_clicked,
-            "on_config_autoconnect": self.on_config_autoconnect,
-            "on_config_prefer_tcp": self.on_config_prefer_tcp,
-            "on_config_nm_system_wide": self.on_config_nm_system_wide,
             "on_close_window": self.on_close_window,
         }
         builder.connect_signals(handlers)
+
+        style_context = self.get_style_context()  # type: ignore
+        bg_color = style_context.get_background_color(Gtk.StateFlags.NORMAL)
+        self.is_dark_theme = is_dark(bg_color)
+
+        dark_icons = {
+            "infoButton": "question-icon-dark.png",
+            "instituteIcon": "institute-icon-dark.png",
+            "earthIcon": "earth-icon-dark.png",
+            "serverIcon": "server-icon-dark.png",
+        }
+
+        if self.is_dark_theme:
+            for _id, icon in dark_icons.items():
+                obj = builder.get_object(_id)
+                obj.set_from_file(get_images_path(icon))
 
         # Whether or not the profile that is selected is the 'same' one as before
         # This is used so it doesn't fully trigger the callback
@@ -118,11 +145,19 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
 
         self.app_logo = builder.get_object("appLogo")
 
+        self.failover_text = builder.get_object("failoverText")
+        self.failover_text_cancel = None
+        self.failover_label = builder.get_object("failoverLabel")
+
         self.page_stack = builder.get_object("pageStack")
-        self.settings_button = builder.get_object("settingsButton")
         self.back_button_container = builder.get_object("backButtonEventBox")
 
         self.server_list_container = builder.get_object("serverListContainer")
+
+        self.info_version = builder.get_object("infoVersion")
+        self.info_version.set_text(f"{__version__} (pre-release)")
+        self.info_log_location = builder.get_object("infoLogLocation")
+        self.info_log_location.set_text(str(self.app.variant.logfile))
 
         self.institute_list_header = builder.get_object("instituteAccessHeader")
         self.secure_internet_list_header = builder.get_object("secureInternetHeader")
@@ -171,9 +206,7 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         self.connection_info_downloaded = builder.get_object(
             "connectionInfoDownloadedText"
         )
-        self.connection_info_protocol = builder.get_object(
-            "connectionInfoProtocolText"
-        )
+        self.connection_info_protocol = builder.get_object("connectionInfoProtocolText")
         self.connection_info_uploaded = builder.get_object("connectionInfoUploadedText")
         self.connection_info_ipv4address = builder.get_object(
             "connectionInfoIpv4AddressText"
@@ -186,14 +219,14 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         self.connection_renew_thread_cancel: Optional[Callable] = None
         self.connection_info_stats = None
 
+        self.info_dialog = builder.get_object("infoDialog")
+
         self.keyring_dialog = builder.get_object("keyringDialog")
         self.keyring_do_not_show = builder.get_object("keyringDoNotShow")
 
         self.server_image = builder.get_object("serverImage")
         self.server_label = builder.get_object("serverLabel")
         self.server_support_label = builder.get_object("supportLabel")
-
-        self.settings_show_back_leave = False
 
         self.renew_session_button = builder.get_object("renewSessionButton")
         self.select_profile_combo = builder.get_object("selectProfileCombo")
@@ -202,36 +235,26 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         self.oauth_page = builder.get_object("openBrowserPage")
         self.oauth_cancel_button = builder.get_object("cancelBrowserButton")
 
-        self.settings_page = builder.get_object("settingsPage")
-        self.setting_config_autoconnect = builder.get_object("settingConfigAutoconnect")
-        self.setting_config_prefer_tcp = builder.get_object("settingConfigPreferTCP")
-        self.setting_config_nm_system_wide = builder.get_object(
-            "settingConfigNMSystemWide"
-        )
-
         self.loading_page = builder.get_object("loadingPage")
         self.loading_title = builder.get_object("loadingTitle")
         self.loading_message = builder.get_object("loadingMessage")
 
-        self.error_page = builder.get_object("errorPage")
-        self.error_text = builder.get_object("errorText")
-        self.error_acknowledge_button = builder.get_object("errorAcknowledgeButton")
-
         self.set_title(self.app.variant.name)  # type: ignore
         self.set_icon_from_file(self.app.variant.icon)  # type: ignore
         if self.app.variant.logo:
-            self.app_logo.set_from_file(self.app.variant.logo)
+            logo = self.app.variant.logo
+            if self.is_dark_theme:
+                logo = self.app.variant.logo_dark
+            self.app_logo.set_from_file(logo)
         if self.app.variant.server_image:
-            self.find_server_image.set_from_file(self.app.variant.server_image)
+            self.find_server_image.set_from_file(
+                self.app.variant.server_image(self.is_dark_theme)
+            )
         if not self.app.variant.use_predefined_servers:
             self.find_server_label.set_text(_("Server address"))
             self.find_server_search_input.set_placeholder_text(
                 _("Enter the server address")
             )
-
-        # Track the currently shown page so we can return to it
-        # when the settings page is closed.
-        self.current_shown_page = None
 
         # We track the switch state so we can distinguish
         # the switch being set by the ui from the user toggling it.
@@ -407,11 +430,13 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         if self.error_revealer is None or self.error_revealer_label is None:
             return
         self.error_revealer.set_reveal_child(True)
-        self.error_revealer_label.set_text(f'''
+        self.error_revealer_label.set_text(
+            f"""
 The following error was reported: <i>{GLib.markup_escape_text(error)}</i>.
 
 For detailed information, see the log file located at:
- - {GLib.markup_escape_text(str(self.app.variant.logfile))}''')
+ - {GLib.markup_escape_text(str(self.app.variant.logfile))}"""
+        )
         self.error_revealer_label.set_use_markup(True)
 
     @run_in_main_gtk_thread
@@ -460,24 +485,6 @@ For detailed information, see the log file located at:
         Show a collection of pages.
         """
         self.current_shown_page = None
-
-    def is_on_settings_page(self) -> bool:
-        return self.page_stack.get_visible_child() is self.settings_page
-
-    def enter_settings_page(self) -> None:
-        assert not self.is_on_settings_page()
-        # Determine whether or not we need to show the back button after leaving
-        self.settings_show_back_leave = self.back_button_container.props.visible
-        self.setting_config_autoconnect.set_state(self.app.config.autoconnect)
-        self.setting_config_nm_system_wide.set_state(self.app.config.nm_system_wide)
-        self.setting_config_prefer_tcp.set_state(self.app.config.prefer_tcp)
-        self.page_stack.set_visible_child(self.settings_page)
-        self.show_back_button(True)
-
-    def leave_settings_page(self) -> None:
-        assert self.is_on_settings_page()
-        self.page_stack.set_visible_child(self.current_shown_page)
-        self.show_back_button(self.settings_show_back_leave)
 
     def recreate_profile_combo(self, server_info) -> None:
         # Create a store of profiles
@@ -664,13 +671,21 @@ For detailed information, see the log file located at:
         if not servers and old_state != get_ui_state(State.SEARCH_SERVER):
             self.call_model("set_search_server")
 
-        if not self.app.model.keyring.secure and not self.app.config.ignore_keyring_warning:
+        if all(
+            [
+                not self.app.model.keyring.secure,
+                not self.app.config.ignore_keyring_warning,
+                old_state == get_ui_state(State.DEREGISTERED),
+            ]
+        ):
             self.keyring_dialog.show()
             _id = self.keyring_dialog.run()
             if _id == QUIT_ID:
                 self.close()  # type: ignore
             self.keyring_dialog.destroy()
-            self.app.config.ignore_keyring_warning = self.keyring_do_not_show.get_active()
+            self.app.config.ignore_keyring_warning = (
+                self.keyring_do_not_show.get_active()
+            )
 
     @ui_transition(State.NO_SERVER, StateType.LEAVE)
     def exit_MainState(self, old_state, new_state):
@@ -739,7 +754,6 @@ For detailed information, see the log file located at:
             column = Gtk.TreeViewColumn(None, text_cell, text=0)
             profile_tree_view.append_column(column)
 
-        style_tree_view(self, profile_tree_view)
         profile_tree_view.set_model(profiles_list_model)
         profiles_list_model.clear()
         for profile in profiles.profiles:
@@ -775,7 +789,6 @@ For detailed information, see the log file located at:
             column = Gtk.TreeViewColumn(None, text_cell, text=0)
             location_tree_view.append_column(column)
 
-            style_tree_view(self, location_tree_view)
             location_tree_view.set_model(location_list_model)
 
         location_list_model.clear()
@@ -832,6 +845,40 @@ For detailed information, see the log file located at:
         self.hide_page(self.connection_page)
         self.pause_connection_info()
 
+    @run_in_main_gtk_thread
+    def update_failover_text(self, dropped):
+        if self.failover_text_cancel is not None:
+            GLib.source_remove(self.failover_text_cancel)
+        self.failover_text_cancel = None
+        if not dropped:
+            self.failover_text.hide()
+        else:
+            # Show the failover text for 10 seconds
+            self.failover_text_cancel = GLib.timeout_add(
+                10_000, self.hide_failover_text_timeout
+            )
+            self.failover_label.set_text(
+                "The VPN was unable to reach the internet. We have switched to a different VPN protocol"
+            )
+            self.failover_text.show()
+
+    def hide_failover_text_timeout(self):
+        self.failover_text_cancel = None
+        self.failover_text.hide()
+        return False
+
+    def show_failover_text_timeout(self):
+        self.failover_text_cancel = None
+        self.failover_text.show()
+        return False
+
+    @ui_transition(State.CONNECTED, StateType.LEAVE)
+    def leave_ConnectedState(self, old_state, server_info):
+        if self.failover_text_cancel is not None:
+            GLib.source_remove(self.failover_text_cancel)
+        self.failover_text_cancel = None
+        self.failover_text.hide()
+
     @ui_transition(State.CONNECTED, StateType.ENTER)
     def enter_ConnectedState(self, old_state, server_info):
         self.show_page(self.connection_page)
@@ -842,7 +889,16 @@ For detailed information, see the log file located at:
         self.update_connection_status(True)
         self.update_connection_server(server_info)
         self.start_validity_renew(server_info)
-        self.call_model("start_failover")
+
+        if self.app.model.should_failover():
+            self.failover_text_cancel = GLib.timeout_add(
+                1000, self.show_failover_text_timeout
+            )
+            self.failover_label.set_text(
+                "We have not yet determined that the VPN is able to reach the internet..."
+            )
+            self.call_model("start_failover", self.update_failover_text)
+            return
 
     def start_validity_renew(self, server_info) -> None:
         self.connection_validity_thread_cancel = run_periodically(
@@ -867,24 +923,18 @@ For detailed information, see the log file located at:
             self.connection_renew_thread_cancel()
             self.connection_renew_thread_cancel = None
 
-    # ui callbacks
-    def on_configure_settings(self, widget: EventBox, event: EventButton) -> None:
-        logger.debug("clicked on configure settings")
-        if self.is_on_settings_page():
-            self.leave_settings_page()
-        else:
-            self.enter_settings_page()
+    def on_info_delete(self, widget, event):
+        logger.debug("info dialog delete event")
+        return widget.hide_on_delete()
 
-    def on_get_help(self, widget, event):
-        logger.debug("clicked on get help")
-        webbrowser.open(HELP_URL)
+    def on_info_button(self, widget: EventBox, event: EventButton) -> None:
+        logger.debug("clicked info button")
+        self.info_dialog.show()
+        self.info_dialog.run()
+        self.info_dialog.hide()
 
     def on_go_back(self, widget: EventBox, event: EventButton) -> None:
         logger.debug("clicked on go back")
-        if self.is_on_settings_page():
-            self.leave_settings_page()
-            return
-
         self.call_model("go_back")
 
     def on_add_other_server(self, button: Button) -> None:
@@ -907,10 +957,7 @@ For detailed information, see the log file located at:
             logger.debug(f"Server added, {display_name}")
 
         if self.app.model.is_search_server():
-            if self.app.config.autoconnect:
-                self.call_model("connect", server, None, True)
-            else:
-                self.call_model("add", server, on_added)
+            self.call_model("add", server, on_added)
         else:
             self.call_model("connect", server)
 
@@ -956,16 +1003,6 @@ For detailed information, see the log file located at:
 
         row = model[tree_iter]
         server = row[1]
-
-        cancel_item = Gtk.MenuItem()  # type: ignore
-        cancel_box = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 0)  # type: ignore
-        cancel_image = Gtk.Image.new_from_icon_name("edit-undo", Gtk.IconSize.MENU)  # type: ignore
-        cancel_label = Gtk.Label.new("Cancel")  # type: ignore
-        cancel_box.pack_start(cancel_image, False, False, 0)
-        cancel_box.pack_start(cancel_label, False, False, 8)
-        cancel_item.add(cancel_box)
-        cancel_item.show_all()
-
         remove_item = Gtk.MenuItem()  # type: ignore
         remove_item.connect("activate", lambda _: self.server_ask_remove(server))
         remove_box = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 0)  # type: ignore
@@ -980,7 +1017,6 @@ For detailed information, see the log file located at:
         # Icons are already added so do not reserve extra space for them
         menu.set_reserve_toggle_size(0)  # type: ignore
         menu.append(remove_item)
-        menu.append(cancel_item)
         menu.attach_to_widget(widget)  # type: ignore
         menu.popup_at_pointer()
 
@@ -1050,7 +1086,9 @@ For detailed information, see the log file located at:
             ipv4 = self.connection_info_stats.ipv4
             ipv6 = self.connection_info_stats.ipv6
             self.connection_info_downloaded.set_text(download)
-            self.connection_info_protocol.set_text(f"Protocol: <b>{GLib.markup_escape_text(protocol)}</b>")
+            self.connection_info_protocol.set_text(
+                f"Protocol: <b>{GLib.markup_escape_text(protocol)}</b>"
+            )
             self.connection_info_protocol.set_use_markup(True)
             self.connection_info_uploaded.set_text(upload)
             self.connection_info_ipv4address.set_text(ipv4)
@@ -1148,18 +1186,6 @@ For detailed information, see the log file located at:
         logger.debug("clicked on renew session")
 
         self.call_model("renew_session")
-
-    def on_config_autoconnect(self, _switch: Switch, state: bool) -> None:
-        logger.debug("clicked on setting: 'autoconnect'")
-        self.app.config.autoconnect = state
-
-    def on_config_prefer_tcp(self, _switch: Switch, state: bool) -> None:
-        logger.debug("clicked on setting: 'prefer tcp'")
-        self.app.config.prefer_tcp = state
-
-    def on_config_nm_system_wide(self, switch, state: bool):
-        logger.debug("clicked on setting: 'nm system wide'")
-        self.app.config.nm_system_wide = state
 
     def on_close_window(self, window: "EduVpnGtkWindow", event: Event) -> bool:
         logger.debug("clicked on close window")

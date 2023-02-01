@@ -2,11 +2,12 @@ import enum
 from functools import lru_cache
 from typing import Dict, List
 
-from eduvpn_common.discovery import DiscoServer, DiscoOrganization
-from eduvpn_common.server import Server, InstituteServer, SecureInternetServer
-from eduvpn.i18n import retrieve_country_name
-from eduvpn.ui.utils import show_ui_component, style_tree_view
+from eduvpn_common.discovery import DiscoOrganization, DiscoServer
+from eduvpn_common.server import InstituteServer, SecureInternetServer, Server
 from gi.overrides.Gtk import ListStore  # type: ignore
+
+from eduvpn.i18n import retrieve_country_name
+from eduvpn.ui.utils import show_ui_component
 
 
 class ServerGroup(enum.Enum):
@@ -80,7 +81,7 @@ def group_servers(servers):
     """
     Separate the servers into three groups.
     """
-    groups: Dict[ServerGroup, List[Server]] = {
+    groups: Dict[ServerGroup, List[Server]] = {  # type: ignore
         ServerGroup.INSTITUTE_ACCESS: [],
         ServerGroup.SECURE_INTERNET: [],
         ServerGroup.OTHER: [],
@@ -134,7 +135,6 @@ def init_server_search(window: "EduVpnGtkWindow") -> None:  # type: ignore  # no
         model = get_group_model(group)
         sorted_model = Gtk.TreeModelSort(model=model)  # type: ignore
         sorted_model.set_sort_column_id(0, Gtk.SortType.ASCENDING)  # type: ignore
-        style_tree_view(window, tree_view)
         tree_view.set_model(sorted_model)
 
 
