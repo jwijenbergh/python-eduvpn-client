@@ -1,3 +1,9 @@
+python-eduvpn-client (3.3.0-0.2) unstable; urgency=medium
+
+  * Add watch file to include prereleases
+
+ -- Jeroen Wijenbergh <jeroen.wijenbergh@geant.org>  Fri, 03 Feb 2023 10:01:25 +0100
+
 python-eduvpn-client (3.3.0-0.1) unstable; urgency=medium
 
   * New upstream pre-release version 3.3.0
