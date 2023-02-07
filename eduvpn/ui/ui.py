@@ -43,7 +43,7 @@ from eduvpn.utils import (
     get_ui_state,
     log_exception,
     run_in_background_thread,
-    run_in_main_gtk_thread,
+    run_in_glib_thread,
     run_periodically,
     ui_transition,
 )
@@ -144,6 +144,8 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         self.is_selected = False
 
         self.app_logo = builder.get_object("appLogo")
+        self.app_logo_info = builder.get_object("appLogoInfo")
+        self.info_support_box = builder.get_object("infoSupportBox")
 
         self.failover_text = builder.get_object("failoverText")
         self.failover_text_cancel = None
@@ -246,15 +248,17 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
             if self.is_dark_theme:
                 logo = self.app.variant.logo_dark
             self.app_logo.set_from_file(logo)
+            self.app_logo_info.set_from_file(logo)
         if self.app.variant.server_image:
             self.find_server_image.set_from_file(
-                self.app.variant.server_image(self.is_dark_theme)
+                self.app.variant.server_image
             )
         if not self.app.variant.use_predefined_servers:
             self.find_server_label.set_text(_("Server address"))
             self.find_server_search_input.set_placeholder_text(
                 _("Enter the server address")
             )
+            self.info_support_box.hide()
 
         # We track the switch state so we can distinguish
         # the switch being set by the ui from the user toggling it.
@@ -315,14 +319,14 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         else:
             raise Exception(f"No such function: {func_name}")
 
-    @run_in_main_gtk_thread
+    @run_in_glib_thread
     def enter_deregistered(self):
         self.show_loading_page(
             _("Loading client"),
             _("The client is loading the servers."),
         )
 
-    @run_in_main_gtk_thread
+    @run_in_glib_thread
     def exit_deregistered(self):
         self.hide_loading_page()
 
@@ -331,11 +335,11 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         if should_show_error(error):
             self.show_error_revealer(str(error))
 
-    @run_in_main_gtk_thread
+    @run_in_glib_thread
     def initialize_clipboard(self):
         self.clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
 
-    @run_in_main_gtk_thread
+    @run_in_glib_thread
     def create_error_revealer(self):
         # Creat the revealer and set the properties
         self.error_revealer = Gtk.Revealer.new()
@@ -425,7 +429,7 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         # add the error revealer to the main overlay
         self.main_overlay.add_overlay(self.error_revealer)
 
-    @run_in_main_gtk_thread
+    @run_in_glib_thread
     def show_error_revealer(self, error: str) -> None:
         if self.error_revealer is None or self.error_revealer_label is None:
             return
@@ -439,7 +443,7 @@ For detailed information, see the log file located at:
         )
         self.error_revealer_label.set_use_markup(True)
 
-    @run_in_main_gtk_thread
+    @run_in_glib_thread
     def copy_error_revealer(self, _button) -> None:
         if self.error_revealer_label is None:
             return
@@ -448,7 +452,7 @@ For detailed information, see the log file located at:
         self.clipboard.set_text(self.error_revealer_label.get_text(), -1)
         self.eduvpn_app.enter_CopiedAnError()  # type: ignore
 
-    @run_in_main_gtk_thread
+    @run_in_glib_thread
     def hide_error_revealer(self, _button) -> None:
         if self.error_revealer is None:
             return
@@ -845,7 +849,7 @@ For detailed information, see the log file located at:
         self.hide_page(self.connection_page)
         self.pause_connection_info()
 
-    @run_in_main_gtk_thread
+    @run_in_glib_thread
     def update_failover_text(self, dropped):
         if self.failover_text_cancel is not None:
             GLib.source_remove(self.failover_text_cancel)
@@ -902,14 +906,14 @@ For detailed information, see the log file located at:
 
     def start_validity_renew(self, server_info) -> None:
         self.connection_validity_thread_cancel = run_periodically(
-            run_in_main_gtk_thread(
+            run_in_glib_thread(
                 partial(self.update_connection_validity, server_info.expire_time)
             ),
             UPDATE_EXPIRY_INTERVAL,
             "update-validity",
         )
         self.connection_renew_thread_cancel = run_periodically(
-            run_in_main_gtk_thread(self.update_connection_renew),
+            run_in_glib_thread(self.update_connection_renew),
             UPDATE_RENEW_INTERVAL,
             "update-renew",
         )
