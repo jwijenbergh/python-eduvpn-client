@@ -2,11 +2,11 @@ import enum
 from functools import lru_cache
 from typing import Dict, List
 
-from eduvpn_common.discovery import DiscoOrganization, DiscoServer
-from eduvpn_common.server import InstituteServer, SecureInternetServer, Server
 from gi.overrides.Gtk import ListStore  # type: ignore
 
+from eduvpn.discovery import DiscoOrganization, DiscoServer
 from eduvpn.i18n import retrieve_country_name
+from eduvpn.server import InstituteServer, SecureInternetServer, Server
 from eduvpn.ui.utils import show_ui_component
 
 

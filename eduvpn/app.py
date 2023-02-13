@@ -4,27 +4,19 @@ import os
 import signal
 import sys
 import webbrowser
-from datetime import datetime
-from typing import Any, Callable, Iterator, List, Optional, TextIO
+from typing import Any, Callable, Iterator, List, Optional, TextIO, Tuple
 
-from eduvpn_common.discovery import DiscoOrganization, DiscoServer
-from eduvpn_common.error import WrappedError
-from eduvpn_common.main import EduVPN
-from eduvpn_common.server import (
-    Config,
-    InstituteServer,
-    SecureInternetServer,
-    Server,
-    Token,
-)
-from eduvpn_common.state import State, StateType
+from eduvpn_common.main import EduVPN, WrappedError
 from eduvpn_common.types import ReadRxBytes
 
 from eduvpn import nm
 from eduvpn.config import Configuration
-from eduvpn.connection import Connection, Validity
+from eduvpn.connection import (Config, Connection, Token, parse_config,
+                               parse_expiry)
+from eduvpn.event.machine import StateMachine
+from eduvpn.event.state import State, StateType
 from eduvpn.keyring import DBusKeyring, InsecureFileKeyring, TokenKeyring
-from eduvpn.server import ServerDatabase
+from eduvpn.server import ServerDatabase, parse_locations, parse_profiles
 from eduvpn.utils import model_transition, run_in_background_thread
 from eduvpn.variants import ApplicationVariant
 
@@ -32,22 +24,27 @@ logger = logging.getLogger(__name__)
 
 
 class ApplicationModelTransitions:
-    def __init__(self, common: EduVPN, variant: ApplicationVariant) -> None:
-        self.common = common
-        self.common.register_class_callbacks(self)
-        self.server_db = ServerDatabase(common, variant.use_predefined_servers)
+    def __init__(
+        self, wrapper: EduVPN, machine: StateMachine, variant: ApplicationVariant
+    ) -> None:
+        self.wrapper = wrapper
+        self.machine = machine
+        self.machine.register_events(self)
+        self.server_db = ServerDatabase(wrapper, variant.use_predefined_servers)
 
-    @model_transition(State.NO_SERVER, StateType.ENTER)
+    @model_transition(State.MAIN, StateType.ENTER)
     def get_previous_servers(self, old_state: State, servers):
-        logger.debug(f"Transition: NO_SERVER, old state: {old_state.name}")
+        logger.debug(f"Transition: NO_SERVER, old state: {old_state}")
         has_wireguard = nm.is_wireguard_supported()
-        self.common.set_support_wireguard(has_wireguard)
+        self.wrapper.set_support_wireguard(has_wireguard)
+        if servers is None:
+            servers = self.server_db.configured
         return servers
 
-    @model_transition(State.SEARCH_SERVER, StateType.ENTER)
+    @model_transition(State.SEARCHING_SERVER, StateType.ENTER)
     def parse_discovery(self, old_state: State, _):
-        logger.debug(f"Transition: SEARCH_SERVER, old state: {old_state.name}")
-        saved_servers = self.common.get_saved_servers()
+        logger.debug(f"Transition: SEARCHING_SERVER, old state: {old_state}")
+        saved_servers = self.server_db.configured
         # Whether or not the SEARCH_SERVER screen
         # should be the 'main' screen
         if saved_servers is not None:
@@ -61,50 +58,45 @@ class ApplicationModelTransitions:
 
         return (self.server_db.disco, is_main, update_disco)
 
-    @model_transition(State.LOADING_SERVER, StateType.ENTER)
-    def loading_server(self, old_state: State, data: str):
-        logger.debug(f"Transition: LOADING_SERVER, old state: {old_state.name}")
-        return data
-
     @model_transition(State.CHOSEN_SERVER, StateType.ENTER)
     def chosen_server(self, old_state: State, data: str):
-        logger.debug(f"Transition: CHOSEN_SERVER, old state: {old_state.name}")
+        logger.debug(f"Transition: CHOSEN_SERVER, old state: {old_state}")
+        return data
+
+    @model_transition(State.LOADING_SERVER, StateType.ENTER)
+    def loading_server(self, old_state: State, data: str):
+        logger.debug(f"Transition: LOADING_SERVER, old state: {old_state}")
         return data
 
     @model_transition(State.DISCONNECTING, StateType.ENTER)
     def disconnecting(self, old_state: State, server):
-        logger.debug(f"Transition: DISCONNECTING, old state: {old_state.name}")
+        logger.debug(f"Transition: DISCONNECTING, old state: {old_state}")
         return server
 
     @model_transition(State.ASK_PROFILE, StateType.ENTER)
     def parse_profiles(self, old_state: State, profiles):
-        logger.debug(f"Transition: ASK_PROFILE, old state: {old_state.name}")
+        logger.debug(f"Transition: ASK_PROFILE, old state: {old_state}")
         return profiles
 
     @model_transition(State.ASK_LOCATION, StateType.ENTER)
     def parse_locations(self, old_state: State, locations: List[str]):
-        logger.debug(f"Transition: ASK_LOCATION, old state: {old_state.name}")
+        logger.debug(f"Transition: ASK_LOCATION, old state: {old_state}")
         return locations
 
     @model_transition(State.AUTHORIZED, StateType.ENTER)
     def authorized(self, old_state: State, data: str):
-        logger.debug(f"Transition: AUTHORIZED, old state: {old_state.name}")
+        logger.debug(f"Transition: AUTHORIZED, old state: {old_state}")
         return data
 
     @model_transition(State.OAUTH_STARTED, StateType.ENTER)
     def start_oauth(self, old_state: State, url: str):
-        logger.debug(f"Transition: OAUTH_STARTED, old state: {old_state.name}")
+        logger.debug(f"Transition: OAUTH_STARTED, old state: {old_state}")
         self.open_browser(url)
         return url
 
-    @model_transition(State.REQUEST_CONFIG, StateType.ENTER)
-    def parse_request_config(self, old_state: State, data: str):
-        logger.debug(f"Transition: REQUEST_CONFIG, old state: {old_state.name}")
-        return data
-
     @model_transition(State.DISCONNECTED, StateType.ENTER)
     def parse_config(self, old_state: State, server):
-        logger.debug(f"Transition: DISCONNECTED, old state: {old_state.name}")
+        logger.debug(f"Transition: DISCONNECTED, old state: {old_state}")
         return server
 
     @run_in_background_thread("open-browser")
@@ -122,29 +114,58 @@ class ApplicationModelTransitions:
 
     @model_transition(State.CONNECTED, StateType.ENTER)
     def parse_connected(self, old_state: State, server):
-        logger.debug(f"Transition: CONNECTED, old state: {old_state.name}")
-        return server
+        logger.debug(f"Transition: CONNECTED, old state: {old_state}")
+        expire_times = parse_expiry(self.wrapper.get_expiry_times())
+        return (server, expire_times)
 
     @model_transition(State.CONNECTING, StateType.ENTER)
     def parse_connecting(self, old_state: State, server):
-        logger.debug(f"Transition: CONNECTING, old state: {old_state.name}")
+        logger.debug(f"Transition: CONNECTING, old state: {old_state}")
         return server
 
 
 class ApplicationModel:
     def __init__(
-        self, common: EduVPN, config, variant: ApplicationVariant, nm_manager
+        self,
+        common: EduVPN,
+        machine: StateMachine,
+        config,
+        variant: ApplicationVariant,
+        nm_manager,
     ) -> None:
         self.common = common
         self.config = config
+        self.changing_location = False
         self.keyring: TokenKeyring = DBusKeyring(variant)
         if not self.keyring.available:
             self.keyring = InsecureFileKeyring(variant)
-        self.transitions = ApplicationModelTransitions(common, variant)
+        self.machine = machine
+        self.transitions = ApplicationModelTransitions(common, self.machine, variant)
         self.variant = variant
         self.nm_manager = nm_manager
-        self.common.register_class_callbacks(self)
         self.was_tcp = False
+
+    def transition(self, old: State, new: State, data: str):
+        logger.debug(f"Got transition from eduvpn-common: {old}, to: {new}")
+
+        data_conv = data
+        if new == State.MAIN:
+            data_conv = self.server_db.configured
+
+        if new == State.ASK_LOCATION:
+            data_conv = parse_locations(data)
+
+        if new == State.ASK_PROFILE:
+            data_conv = parse_profiles(json.loads(data))
+
+        self.machine.go(new, data_conv, go_transition=True)
+
+        if new == State.GOT_CONFIG:
+            self.machine.go(State.DISCONNECTED, self.server_db.current)
+        return True
+
+    def register(self, debug: bool):
+        self.common.register(handler=self.transition, debug=debug)
 
     @property
     def server_db(self):
@@ -152,11 +173,7 @@ class ApplicationModel:
 
     @property
     def current_server(self):
-        return self.common.get_current_server()
-
-    @current_server.setter
-    def current_server(self, current_server):
-        self.transitions.current_server = current_server
+        return self.server_db.current
 
     def get_failover_rx(self, filehandler: Optional[TextIO]) -> int:
         rx_bytes = self.nm_manager.get_stats_bytes(filehandler)
@@ -240,79 +257,50 @@ class ApplicationModel:
         except WrappedError as e:
             logger.debug(f"Failed to cancel failover, error: {e}")
 
-    def get_expiry(self, expire_time: datetime) -> Validity:
-        return Validity(expire_time)
-
     def change_secure_location(self):
-        self.common.change_secure_location()
+        locations = json.loads(self.common.get_secure_locations())
+        self.changing_location = True
+        self.machine.go(State.ASK_LOCATION, locations)
 
     def set_secure_location(self, location_id: str):
         self.common.set_secure_location(location_id)
+        if self.changing_location:
+            self.machine.go(State.MAIN)
+            self.changing_location = False
 
     def set_search_server(self):
-        self.common.set_search_server()
+        # TODO: Fill in discovery here
+        self.machine.go(State.SEARCHING_SERVER)
 
     def cancel_oauth(self):
         self.common.cancel_oauth()
 
     def go_back(self):
-        self.common.go_back()
+        self.machine.back()
 
     def should_renew_button(self) -> int:
         return self.common.should_renew_button()
 
     def add(self, server, callback=None):
-        if isinstance(server, InstituteServer):
-            self.common.add_institute_access(server.url)
-        elif isinstance(server, DiscoServer):
-            self.common.add_institute_access(server.base_url)
-        elif isinstance(server, SecureInternetServer) or isinstance(
-            server, DiscoOrganization
-        ):
-            self.common.add_secure_internet_home(server.org_id)
-        elif isinstance(server, Server):
-            self.common.add_custom_server(server.url)
-        else:
-            raise Exception("Server cannot be added")
-
+        # TODO: handle discovery types
+        self.common.add_server(server.category_id, server.identifier)
         if callback:
-            callback(str(server))
+            callback(server)
 
     def remove(self, server):
-        if isinstance(server, InstituteServer):
-            self.common.remove_institute_access(server.url)
-        elif isinstance(server, SecureInternetServer):
-            self.common.remove_secure_internet()
-        elif isinstance(server, Server):
-            self.common.remove_custom_server(server.url)
-
+        self.common.remove_server(server.category_id, server.identifier)
         # Delete tokens from the keyring
         self.clear_tokens(server)
 
     def connect_get_config(
-        self, server, tokens=None, prefer_tcp: bool = False
-    ) -> Optional[Config]:
-        if isinstance(server, InstituteServer):
-            return self.common.get_config_institute_access(
-                server.url, prefer_tcp, tokens
-            )
-        elif isinstance(server, DiscoServer):
-            return self.common.get_config_institute_access(
-                server.base_url, prefer_tcp, tokens
-            )
-        elif isinstance(server, DiscoOrganization):
-            return self.common.get_config_secure_internet(
-                server.org_id, prefer_tcp, tokens
-            )
-        elif isinstance(server, SecureInternetServer) or isinstance(
-            server, DiscoOrganization
-        ):
-            return self.common.get_config_secure_internet(
-                server.org_id, prefer_tcp, tokens
-            )
-        elif isinstance(server, Server):
-            return self.common.get_config_custom_server(server.url, prefer_tcp, tokens)
-        raise Exception("No server to get a config for")
+        self, server, tokens="{}", prefer_tcp: bool = False
+    ) -> Optional[Tuple[Config, Token]]:
+        # We prefer TCP if the user has set it or UDP is determined to be blocked
+        # TODO: handle discovery and tokens
+        config = self.common.get_config(
+            server.category_id, server.identifier, prefer_tcp, tokens
+        )
+        return parse_config(config)
 
     def clear_tokens(self, server):
         attributes = {
@@ -365,55 +353,45 @@ class ApplicationModel:
         self,
         server,
         callback: Optional[Callable] = None,
-        ensure_exists=False,
         prefer_tcp: bool = False,
     ) -> None:
         # Variable to be used as a last resort or for debugging
         # to override the prefer TCP setting
         if os.environ.get("EDUVPN_PREFER_TCP", "0") == "1":
             prefer_tcp = True
+        tokens = self.load_tokens(server)
+        tokensJ = "{}"
+        if tokens:
+            tokensJ = tokens.dump()
 
-        config = None
-        config_type = None
-        if ensure_exists:
-            self.add(server)
 
-        tokens = None
-        if not isinstance(server, DiscoServer) and not isinstance(
-            server, DiscoOrganization
-        ):
-            tokens = self.load_tokens(server)
         # keep track if we preferred TCP
         # this is for failover
         self.was_tcp = prefer_tcp
-
-        config = self.connect_get_config(server, tokens, prefer_tcp=prefer_tcp)
-        if not config:
+        config_returned = self.connect_get_config(
+            server, tokens=tokensJ, prefer_tcp=prefer_tcp
+        )
+        if not config_returned:
             raise Exception("No configuration available")
 
-        # Get the updated info from the go library
-        # Because profiles can be switched
-        # And we need the most updated profile settings for default gateway
-        server = self.current_server
+        config, tokens = config_returned
 
-        default_gateway = True
-        if server.profiles is not None and server.profiles.current is not None:
-            default_gateway = server.profiles.current.default_gateway
+        self.save_tokens(server, tokens)
 
         def on_connected():
-            self.common.set_connected()
+            self.set_connected()
             if callback:
                 callback()
 
         def on_connect(_):
             self.nm_manager.activate_connection(on_connected)
 
-        def connect(config, config_type):
-            connection = Connection.parse(str(config), config.config_type)
-            connection.connect(self.nm_manager, default_gateway, on_connect)
+        def connect(config):
+            connection = Connection.parse(config)
+            connection.connect(self.nm_manager, config.default_gateway, on_connect)
 
-        self.common.set_connecting()
-        connect(config, config_type)
+        self.set_connecting()
+        connect(config)
 
     def reconnect(self, callback: Optional[Callable] = None, prefer_tcp: bool = False):
         def on_connected():
@@ -446,12 +424,12 @@ class ApplicationModel:
     def disconnect(self, callback: Optional[Callable] = None) -> None:
         self.nm_manager.deactivate_connection(callback)
 
-    def set_profile(self, profile, connect=False):
+    def set_profile(self, profile: str, connect=False):
         was_connected = self.is_connected()
 
         def do_profile():
             # Set the profile ID
-            self.common.set_profile(profile.identifier)
+            self.common.set_profile(profile)
 
             # Connect if we should and if we were previously connected
             if connect and was_connected:
@@ -481,8 +459,10 @@ class ApplicationModel:
 
         # Try to get the tokens
         server = self.current_server
+        tokensJ = "{}"
         if server:
             tokens = self.load_tokens(server)
+            tokensJ = tokens.dump()
         else:
             logger.warning("Unable to get tokens for /disconnect, no server")
             return
@@ -491,8 +471,8 @@ class ApplicationModel:
         for i in range(retries):
             logger.debug("Cleaning up tokens...")
             try:
-                self.common.cleanup(tokens)
-            except Exception:
+                self.common.cleanup(tokensJ)
+            except Exception as e:
                 # We can try again
                 if i < retries - 1:
                     logger.debug(
@@ -507,13 +487,13 @@ class ApplicationModel:
                 break
 
     def deactivate_connection(self, callback: Optional[Callable] = None) -> None:
-        self.common.set_disconnecting()
+        self.set_disconnecting()
 
         @run_in_background_thread("on-disconnected")
         def on_disconnected():
             # Cleanup the connection by sending / disconnect
             self.cleanup()
-            self.common.set_disconnected()
+            self.set_disconnected()
             if callback:
                 callback()
 
@@ -525,38 +505,55 @@ class ApplicationModel:
     def search_custom(self, query: str) -> Iterator[Any]:
         return self.server_db.search_custom(query)
 
-    def is_no_server(self) -> bool:
-        return self.common.in_fsm_state(State.NO_SERVER)
+    def is_main(self) -> bool:
+        return self.machine.current == State.MAIN
 
-    def is_search_server(self) -> bool:
-        return self.common.in_fsm_state(State.SEARCH_SERVER)
+    def set_connected(self):
+        self.machine.go(State.CONNECTED, self.server_db.current)
+
+    def set_connecting(self):
+        self.machine.go(State.CONNECTING, self.server_db.current)
+
+    def set_disconnecting(self):
+        self.machine.go(State.DISCONNECTING, self.server_db.current)
+
+    def set_disconnected(self):
+        self.machine.go(State.DISCONNECTED, self.server_db.current)
+
+    def is_searching_server(self) -> bool:
+        return self.machine.current == State.SEARCHING_SERVER
 
     def is_connecting(self) -> bool:
-        return self.common.in_fsm_state(State.CONNECTING)
+        return self.machine.current == State.CONNECTING
 
     def is_connected(self) -> bool:
-        return self.common.in_fsm_state(State.CONNECTED)
+        return self.machine.current == State.CONNECTED
 
     def is_disconnected(self) -> bool:
-        return self.common.in_fsm_state(State.DISCONNECTED)
+        return self.machine.current == State.DISCONNECTED
 
     def is_oauth_started(self) -> bool:
-        return self.common.in_fsm_state(State.OAUTH_STARTED)
+        return self.machine.current == State.OAUTH_STARTED
 
 
 class Application:
-    def __init__(self, variant: ApplicationVariant, common: EduVPN) -> None:
+    def __init__(
+        self, variant: ApplicationVariant, wrapper: EduVPN, machine: StateMachine
+    ) -> None:
         self.variant = variant
         self.nm_manager = nm.NMManager(variant)
-        self.common = common
+        self.wrapper = wrapper
+        self.machine = machine
         directory = variant.config_prefix
         self.config = Configuration.load(directory)
-        self.model = ApplicationModel(common, self.config, variant, self.nm_manager)
+        self.model = ApplicationModel(
+            wrapper, machine, self.config, variant, self.nm_manager
+        )
 
         def signal_handler(_signal, _frame):
             if self.model.is_oauth_started():
-                self.common.cancel_oauth()
-            self.common.deregister()
+                self.wrapper.cancel_oauth()
+            self.wrapper.deregister()
             sys.exit(1)
 
         signal.signal(signal.SIGINT, signal_handler)
@@ -568,14 +565,14 @@ class Application:
                 if self.model.is_connected():
                     return
                 if self.model.is_connecting() or initial:
-                    self.common.set_connected()
+                    self.model.set_connected()
             elif state == nm.ConnectionState.CONNECTING:
                 if self.model.is_disconnected():
-                    self.common.set_connecting()
+                    self.model.set_connecting()
             elif state == nm.ConnectionState.DISCONNECTED:
                 if self.model.is_connected():
-                    self.common.set_disconnecting()
-                    self.common.set_disconnected()
+                    self.model.set_disconnecting()
+                    self.model.set_disconnected()
         except Exception:
             return
 

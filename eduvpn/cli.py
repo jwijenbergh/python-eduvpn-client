@@ -1,27 +1,24 @@
 # readline is used! It is for going up and down in interactive mode
 import argparse
+import json
 import readline  # noqa: W0611
 import sys
 from functools import partial
-from typing import Callable
+from typing import Callable, Optional
 
 import eduvpn_common.main as common
-from eduvpn_common.server import InstituteServer, SecureInternetServer, Server
-from eduvpn_common.state import State, StateType
 
 import eduvpn.nm as nm
 from eduvpn_common import __version__ as commonver
 from eduvpn import __version__
 from eduvpn.app import Application
-from eduvpn.i18n import country, retrieve_country_name
-from eduvpn.server import ServerDatabase
-from eduvpn.settings import (
-    CLIENT_ID,
-    CONFIG_DIR_MODE,
-    CONFIG_PREFIX,
-    LETSCONNECT_CLIENT_ID,
-    LETSCONNECT_CONFIG_PREFIX,
-)
+from eduvpn.connection import parse_expiry
+from eduvpn.event.machine import TRANSITIONS, State, StateMachine, StateType
+from eduvpn.i18n import retrieve_country_name
+from eduvpn.server import (InstituteServer, Profile, SecureInternetServer,
+                           Server, ServerDatabase)
+from eduvpn.settings import (CLIENT_ID, CONFIG_DIR_MODE, CONFIG_PREFIX,
+                             LETSCONNECT_CLIENT_ID, LETSCONNECT_CONFIG_PREFIX)
 from eduvpn.ui.search import ServerGroup, group_servers
 from eduvpn.ui.utils import get_validity_text, should_show_error
 from eduvpn.utils import cmd_transition, init_logger, run_in_background_thread
@@ -39,17 +36,23 @@ def get_grouped_index(servers, index):
     return servers_added[index]
 
 
-def ask_profiles(app, profiles):
+def ask_profiles(app, profiles, current: Optional[Profile] = None) -> bool:
     # There is only a single profile
     if len(profiles.profiles) == 1:
-        print("There is only a single profile for this server:", profiles.profiles[0])
-        app.model.set_profile(profiles.profiles[0])
+        _id, name = list(profiles.profiles.items())[0]
+        print("There is only a single profile for this server:", name)
+        app.model.set_profile(_id)
         return False
 
     # Multiple profiles, print the index
-    sorted_profiles = sorted(profiles.profiles, key=lambda p: str(p))
-    for index, profile in enumerate(sorted_profiles):
+    sorted_profiles = sorted(profiles.profiles.items(), key=lambda pair: str(pair[1]))
+    # Multiple profiles, print the index
+    index = 0
+    choices = []
+    for _id, profile in sorted_profiles:
         print(f"[{index+1}]: {str(profile)}")
+        choices.append(_id)
+        index += 1
 
     # And ask for the 1 based index
     while True:
@@ -57,11 +60,15 @@ def ask_profiles(app, profiles):
         try:
             profile_index = int(profile_nr)
 
-            if profile_index < 1 or profile_index > len(sorted_profiles):
+            if profile_index < 1 or profile_index > len(choices):
                 print(f"Invalid profile choice: {profile_index}")
                 continue
-            app.model.set_profile(sorted_profiles[profile_index - 1])
-            return True
+            chosen = choices[profile_index - 1]
+            if current is None or chosen != current.identifier:
+                app.model.set_profile(choices[profile_index - 1])
+                return True
+            print("Selected profile is the same as the current profile")
+            return False
         except ValueError:
             print(f"Input is not a number: {profile_nr}")
 
@@ -97,12 +104,13 @@ class CommandLine:
         self.name = name
         self.variant = variant
         self.common = common
-        self.app = Application(variant, common)
+        self.machine = StateMachine(TRANSITIONS)
+        self.app = Application(variant, common, self.machine)
         self.nm_manager = self.app.nm_manager
         self.server_db = ServerDatabase(common, variant.use_predefined_servers)
         self.transitions = CommandLineTransitions(self.app)
         self.skip_yes = False
-        self.common.register_class_callbacks(self.transitions)
+        self.machine.register_events(self.transitions)
 
     def ask_yes(self, label) -> bool:
         if self.skip_yes:
@@ -187,14 +195,17 @@ class CommandLine:
     def connect_server(self, server, prefer_tcp: bool):
         def connect(callback=None):
             @run_in_background_thread("connect")
-            def connect_background():
+            def connect_background(server):
                 try:
                     # Connect to the server and ensure it exists
-                    should_add = not self.server_db.has(server)
+                    has_server = not self.server_db.has(server)
+                    if has_server is None:
+                        self.app.model.add(server)
+                        # The server should now have been added
+                        server = not self.server_db.has(server)
                     self.app.model.connect(
                         server,
-                        lambda: self.start_failover(callback),
-                        ensure_exists=should_add,
+                        partial(self.start_failover, callback),
                         prefer_tcp=prefer_tcp,
                     )
                 except Exception as e:
@@ -203,7 +214,7 @@ class CommandLine:
                     if callback:
                         callback()
 
-            connect_background()
+            connect_background(server)
 
         if not server:
             print("No server found to connect to, exiting...")
@@ -276,11 +287,9 @@ class CommandLine:
 
         current = self.app.model.current_server
         print(f'Connected to: "{str(current)}" ({current.category})')
-        expiry = self.app.model.current_server.expire_time
+        validity = parse_expiry(self.common.get_expiry_times())
         valid_for = (
-            get_validity_text(self.app.model.get_expiry(expiry))[1]
-            .replace("<b>", "")
-            .replace("</b>", "")
+            get_validity_text(validity, detailed=True)[1].replace("<b>", "").replace("</b>", "")
         )
         print(valid_for)
         print(f"Current profile: {str(current.profiles.current)}")
@@ -375,7 +384,8 @@ class CommandLine:
 
         print("Current profile:", server.profiles.current)
 
-        if not ask_profiles(self.app, server.profiles):
+        # Return if profiles stayed the same
+        if not ask_profiles(self.app, server.profiles, server.profiles.current):
             return
 
         @run_in_background_thread("change-profile-reconnect")
@@ -412,7 +422,8 @@ class CommandLine:
 
         print("Current location:", retrieve_country_name(server.country_code))
 
-        ask_locations(self.app, server.locations)
+        locations = json.loads(self.common.get_secure_locations())
+        ask_locations(self.app, locations)
 
         @run_in_background_thread("change-location-reconnect")
         def reconnect(callback=None):
@@ -648,8 +659,7 @@ class CommandLine:
         self.skip_yes = parsed.yes
 
         # Register the common library
-        self.common.register(parsed.debug)
-        self.common.set_token_updater(self.app.model.save_tokens)
+        self.app.model.register(parsed.debug)
 
         # Update the state by asking NetworkManager
         self.update_state(True)
@@ -683,17 +693,12 @@ class CommandLineTransitions:
 
 
 def eduvpn():
-    _common = common.EduVPN(CLIENT_ID, str(__version__), str(CONFIG_PREFIX), country())
+    _common = common.EduVPN(CLIENT_ID, str(CONFIG_PREFIX))
     cmd = CommandLine("eduVPN", EDUVPN, _common)
     cmd.start()
 
 
 def letsconnect():
-    _common = common.EduVPN(
-        LETSCONNECT_CLIENT_ID,
-        str(__version__),
-        str(LETSCONNECT_CONFIG_PREFIX),
-        country(),
-    )
+    _common = common.EduVPN(LETSCONNECT_CLIENT_ID, str(LETSCONNECT_CONFIG_PREFIX))
     cmd = CommandLine("Let's Connect!", LETS_CONNECT, _common)
     cmd.start()

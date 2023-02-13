@@ -5,12 +5,12 @@ import gi
 
 gi.require_version("Gtk", "3.0")  # noqa: E402
 from eduvpn_common.main import EduVPN
-from eduvpn_common.state import State, StateType
 from gi.repository import Gio, GLib, Gtk
 from gi.repository.Gio import ApplicationCommandLine
 
 from eduvpn import i18n, notify
 from eduvpn.app import Application
+from eduvpn.event.machine import TRANSITIONS, State, StateMachine, StateType
 from eduvpn.settings import CONFIG_DIR_MODE
 from eduvpn.ui.ui import EduVpnGtkWindow
 from eduvpn.utils import init_logger, run_in_background_thread, ui_transition
@@ -30,9 +30,10 @@ class EduVpnGtkApplication(Gtk.Application):
             **kwargs,
         )
 
-        self.app = Application(app_variant, common)
+        self.machine = StateMachine(TRANSITIONS)
+        self.app = Application(app_variant, common, self.machine)
         self.common = common
-        self.common.register_class_callbacks(self)
+        self.machine.register_events(self)
         self.debug = False
         # Only allow a single window and track it on the app.
         self.window = None
