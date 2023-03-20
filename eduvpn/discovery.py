@@ -1,6 +1,8 @@
 import json
 from typing import List
 
+from eduvpn_common.main import ServerType
+
 from eduvpn.i18n import extract_translation
 
 
@@ -29,8 +31,8 @@ class DiscoOrganization:
         return self.org_id
 
     @property
-    def category_id(self):
-        return "secure_internet"
+    def category_id(self) -> ServerType:
+        return ServerType.SECURE_INTERNET
 
     def __str__(self):
         return extract_translation(self.display_name)
@@ -69,8 +71,8 @@ class DiscoServer:
         return self.base_url
 
     @property
-    def category_id(self):
-        return "institute_access"
+    def category_id(self) -> ServerType:
+        return ServerType.INSTITUTE_ACCESS
 
     def __str__(self):
         return extract_translation(self.display_name)

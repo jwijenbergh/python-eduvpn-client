@@ -6,6 +6,7 @@ from typing import Dict, Iterable, List, Optional, Union
 from eduvpn.discovery import parse_disco_organizations, parse_disco_servers
 from eduvpn.i18n import extract_translation
 from eduvpn.settings import IMAGE_PREFIX
+from eduvpn_common.main import ServerType
 
 logger = logging.getLogger(__name__)
 TranslatedStr = Union[str, Dict[str, str]]
@@ -80,8 +81,8 @@ class Server:
         return self.url
 
     @property
-    def category_id(self) -> str:
-        return "custom_server"
+    def category_id(self) -> ServerType:
+        return ServerType.CUSTOM
 
     @property
     def category(self) -> str:
@@ -119,8 +120,8 @@ class InstituteServer(Server):
         return "Institute Access Server"
 
     @property
-    def category_id(self) -> str:
-        return "institute_access"
+    def category_id(self) -> ServerType:
+        return ServerType.INSTITUTE_ACCESS
 
 
 class SecureInternetServer(Server):
@@ -147,8 +148,8 @@ class SecureInternetServer(Server):
         self.country_code = country_code
 
     @property
-    def category_id(self) -> str:
-        return "secure_internet"
+    def category_id(self) -> ServerType:
+        return ServerType.SECURE_INTERNET
 
     @property
     def category(self) -> str:
