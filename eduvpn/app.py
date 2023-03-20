@@ -278,9 +278,6 @@ class ApplicationModel:
     def go_back(self):
         self.machine.back()
 
-    def should_renew_button(self) -> int:
-        return self.common.should_renew_button()
-
     def add(self, server, callback=None):
         # TODO: handle discovery types
         self.common.add_server(server.category_id, server.identifier)
