@@ -30,10 +30,7 @@ def style_widget(widget, class_name: str, style: str):
 
 
 def should_show_error(error: Exception):
-    # TODO: handle level
-    # if isinstance(error, WrappedError):
-    #    return error.level != ErrorLevel.ERR_INFO
-    return True
+    return "context canceled" not in str(error)
 
 
 def get_validity_text(validity: Validity, detailed: bool) -> Tuple[bool, str]:

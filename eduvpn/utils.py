@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 import threading
+import traceback
 from functools import lru_cache, partial, wraps
 from gettext import gettext
 from os import environ, path
@@ -123,6 +124,7 @@ def log_exception(exception: Exception):
     # Other exceptions are already logged by Go
     if not isinstance(exception, WrappedError):
         logger.error(f"Non-Go exception occurred: {str(exception)}")
+        traceback.print_exc()
 
 
 @lru_cache(maxsize=1)

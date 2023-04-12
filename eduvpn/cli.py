@@ -693,12 +693,12 @@ class CommandLineTransitions:
 
 
 def eduvpn():
-    _common = common.EduVPN(CLIENT_ID, str(CONFIG_PREFIX))
+    _common = common.EduVPN(CLIENT_ID, __version__, str(CONFIG_PREFIX))
     cmd = CommandLine("eduVPN", EDUVPN, _common)
     cmd.start()
 
 
 def letsconnect():
-    _common = common.EduVPN(LETSCONNECT_CLIENT_ID, str(LETSCONNECT_CONFIG_PREFIX))
+    _common = common.EduVPN(LETSCONNECT_CLIENT_ID, __version__, str(LETSCONNECT_CONFIG_PREFIX))
     cmd = CommandLine("Let's Connect!", LETS_CONNECT, _common)
     cmd.start()

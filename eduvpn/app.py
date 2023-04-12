@@ -11,12 +11,12 @@ from eduvpn_common.types import ReadRxBytes
 
 from eduvpn import nm
 from eduvpn.config import Configuration
-from eduvpn.connection import (Config, Connection, Token, parse_config,
+from eduvpn.connection import (Config, Connection, Token, parse_config, parse_tokens,
                                parse_expiry)
 from eduvpn.event.machine import StateMachine
 from eduvpn.event.state import State, StateType
 from eduvpn.keyring import DBusKeyring, InsecureFileKeyring, TokenKeyring
-from eduvpn.server import ServerDatabase, parse_locations, parse_profiles
+from eduvpn.server import SecureInternetServer, ServerDatabase, parse_current_server, parse_locations, parse_profiles, parse_required_transition, parse_secure_internet, Server
 from eduvpn.utils import model_transition, run_in_background_thread
 from eduvpn.variants import ApplicationVariant
 
@@ -74,14 +74,14 @@ class ApplicationModelTransitions:
         return server
 
     @model_transition(State.ASK_PROFILE, StateType.ENTER)
-    def parse_profiles(self, old_state: State, profiles):
+    def ask_profile(self, old_state: State, server: Server):
         logger.debug(f"Transition: ASK_PROFILE, old state: {old_state}")
-        return profiles
+        return server
 
     @model_transition(State.ASK_LOCATION, StateType.ENTER)
-    def parse_locations(self, old_state: State, locations: List[str]):
+    def ask_location(self, old_state: State, data):
         logger.debug(f"Transition: ASK_LOCATION, old state: {old_state}")
-        return locations
+        return data
 
     @model_transition(State.AUTHORIZED, StateType.ENTER)
     def authorized(self, old_state: State, data: str):
@@ -135,7 +135,6 @@ class ApplicationModel:
     ) -> None:
         self.common = common
         self.config = config
-        self.changing_location = False
         self.keyring: TokenKeyring = DBusKeyring(variant)
         if not self.keyring.available:
             self.keyring = InsecureFileKeyring(variant)
@@ -153,10 +152,14 @@ class ApplicationModel:
             data_conv = self.server_db.configured
 
         if new == State.ASK_LOCATION:
-            data_conv = parse_locations(data)
+            cookie, locations = parse_required_transition(data, get=parse_locations)
+            set_location = lambda loc: self.common.cookie_reply(cookie, loc)
+            data_conv = (set_location, locations)
 
         if new == State.ASK_PROFILE:
-            data_conv = parse_profiles(json.loads(data))
+            cookie, profiles = parse_required_transition(data, get=parse_profiles)
+            set_location = lambda loc: self.common.cookie_reply(cookie, loc)
+            data_conv = (set_location, profiles)
 
         self.machine.go(new, data_conv, go_transition=True)
 
@@ -166,6 +169,10 @@ class ApplicationModel:
 
     def register(self, debug: bool):
         self.common.register(handler=self.transition, debug=debug)
+        self.common.set_token_handler(self.load_tokens, self.save_tokens)
+
+    def cancel(self):
+        self.common.cancel()
 
     @property
     def server_db(self):
@@ -251,31 +258,34 @@ class ApplicationModel:
             callback(False)
             return
 
-    def cancel_failover(self):
-        try:
-            self.common.cancel_failover()
-        except WrappedError as e:
-            logger.debug(f"Failed to cancel failover, error: {e}")
-
     def change_secure_location(self):
-        locations = json.loads(self.common.get_secure_locations())
-        self.changing_location = True
-        self.machine.go(State.ASK_LOCATION, locations)
+        # get secure location server
+        server = self.server_db.secure_internet
+
+        def choose_location(location: str):
+            try:
+                self.set_secure_location(location)
+            except Exception as e:
+                self.machine.go(State.MAIN)
+                raise e
+            else:
+                self.machine.go(State.MAIN)
+
+        if server is None:
+            logger.error("got no server when changing secure location")
+            return
+
+        self.machine.go(State.ASK_LOCATION, (choose_location, server.locations))
 
     def set_secure_location(self, location_id: str):
         self.common.set_secure_location(location_id)
-        if self.changing_location:
-            self.machine.go(State.MAIN)
-            self.changing_location = False
 
     def set_search_server(self):
         # TODO: Fill in discovery here
         self.machine.go(State.SEARCHING_SERVER)
 
-    def cancel_oauth(self):
-        self.common.cancel_oauth()
-
     def go_back(self):
+        self.cancel()
         self.machine.back()
 
     def add(self, server, callback=None):
@@ -288,15 +298,19 @@ class ApplicationModel:
         self.common.remove_server(server.category_id, server.identifier)
         # Delete tokens from the keyring
         self.clear_tokens(server)
+        self.machine.go(State.MAIN, go_transition=True)
 
     def connect_get_config(
-        self, server, tokens="{}", prefer_tcp: bool = False
-    ) -> Optional[Tuple[Config, Token]]:
+        self, server, prefer_tcp: bool = False
+    ) -> Optional[Config]:
         # We prefer TCP if the user has set it or UDP is determined to be blocked
         # TODO: handle discovery and tokens
         config = self.common.get_config(
-            server.category_id, server.identifier, prefer_tcp, tokens
+            server.category_id, server.identifier, prefer_tcp
         )
+        if config is None:
+            logger.error("got empty config")
+            return None
         return parse_config(config)
 
     def clear_tokens(self, server):
@@ -312,34 +326,48 @@ class ApplicationModel:
             logger.debug("Failed clearing tokens with exception")
             logger.debug(e, exc_info=True)
 
-    def load_tokens(self, server) -> Optional[Token]:
-        attributes = {"server": server.url, "category": server.category}
+    def load_tokens(self, server: str) -> Optional[str]:
+        server_parsed = parse_current_server(server)
+        if server_parsed is None:
+            logger.warning("Got empty server, not loading tokens")
+            return None
+        attributes = {"server": server_parsed.url, "category": server_parsed.category}
         try:
             tokens_json = self.keyring.load(attributes)
             if tokens_json is None:
                 logger.debug("No tokens available")
                 return None
             tokens = json.loads(tokens_json)
-            return Token(tokens["access"], tokens["refresh"], int(tokens["expires"]))
+            d = {
+                "access_token": tokens["access"],
+                "refresh_token": tokens["refresh"],
+                "expires_in": int(tokens["expires"]),
+            }
+            return json.dumps(d)
         except Exception as e:
             logger.debug("Failed loading tokens with exception:")
             logger.debug(e, exc_info=True)
             return None
 
-    def save_tokens(self, server, tokens):
+    def save_tokens(self, server: str, tokens: str):
         logger.debug("Save tokens called")
-        if tokens.access == "" and tokens.refresh == "":
+        server_parsed = parse_current_server(server)
+        if server_parsed is None:
+            logger.warning("Got empty server, not saving token to the keyring")
+            return
+        tokens_parsed = parse_tokens(tokens)
+        if tokens is None or (tokens_parsed.access == "" and tokens_parsed.refresh == ""):
             logger.warning("Got empty tokens, not saving them to the keyring")
             return
         tokens_dict = {}
-        tokens_dict["access"] = tokens.access
-        tokens_dict["refresh"] = tokens.refresh
-        tokens_dict["expires"] = str(tokens.expires)
+        tokens_dict["access"] = tokens_parsed.access
+        tokens_dict["refresh"] = tokens_parsed.refresh
+        tokens_dict["expires"] = str(tokens_parsed.expires)
         attributes = {
-            "server": server.url,
-            "category": server.category,
+            "server": server_parsed.url,
+            "category": server_parsed.category,
         }
-        label = f"{server.url} - OAuth Tokens"
+        label = f"{server_parsed.url} - OAuth Tokens"
         try:
             self.keyring.save(label, attributes, json.dumps(tokens_dict))
         except Exception as e:
@@ -356,24 +384,11 @@ class ApplicationModel:
         # to override the prefer TCP setting
         if os.environ.get("EDUVPN_PREFER_TCP", "0") == "1":
             prefer_tcp = True
-        tokens = self.load_tokens(server)
-        tokensJ = "{}"
-        if tokens:
-            tokensJ = tokens.dump()
-
-
-        # keep track if we preferred TCP
-        # this is for failover
-        self.was_tcp = prefer_tcp
-        config_returned = self.connect_get_config(
-            server, tokens=tokensJ, prefer_tcp=prefer_tcp
+        config = self.connect_get_config(
+            server, prefer_tcp=prefer_tcp
         )
-        if not config_returned:
+        if not config:
             raise Exception("No configuration available")
-
-        config, tokens = config_returned
-
-        self.save_tokens(server, tokens)
 
         def on_connected():
             self.set_connected()
@@ -449,26 +464,14 @@ class ApplicationModel:
         self.connect(self.current_server, callback, prefer_tcp=prefer_tcp)
 
     def cleanup(self):
-        tokens = None
-
         # We retry this cleanup 2 times
         retries = 2
-
-        # Try to get the tokens
-        server = self.current_server
-        tokensJ = "{}"
-        if server:
-            tokens = self.load_tokens(server)
-            tokensJ = tokens.dump()
-        else:
-            logger.warning("Unable to get tokens for /disconnect, no server")
-            return
 
         # Try to cleanup with a number of retries
         for i in range(retries):
             logger.debug("Cleaning up tokens...")
             try:
-                self.common.cleanup(tokensJ)
+                self.common.cleanup()
             except Exception as e:
                 # We can try again
                 if i < retries - 1:
@@ -549,7 +552,7 @@ class Application:
 
         def signal_handler(_signal, _frame):
             if self.model.is_oauth_started():
-                self.wrapper.cancel_oauth()
+                self.model.cancel()
             self.wrapper.deregister()
             sys.exit(1)
 

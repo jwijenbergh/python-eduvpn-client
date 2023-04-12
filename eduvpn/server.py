@@ -1,7 +1,7 @@
 import enum
 import json
 import logging
-from typing import Dict, Iterable, List, Optional, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Union, Tuple
 
 from eduvpn.discovery import parse_disco_organizations, parse_disco_servers
 from eduvpn.i18n import extract_translation
@@ -132,6 +132,7 @@ class SecureInternetServer(Server):
     :param: locations: List[str]: The list of secure internet locations
     :param: profiles: Profiles: The list of profiles that the server has
     :param: country_code: str: The country code of the server
+    :param: locations: List[str]: The list of secure internet locations
     """
 
     def __init__(
@@ -141,11 +142,13 @@ class SecureInternetServer(Server):
         support_contact: List[str],
         profiles: Profiles,
         country_code: str,
+        locations: List[str],
     ):
         super().__init__(org_id, display_name, profiles)
         self.org_id = org_id
         self.support_contact = support_contact
         self.country_code = country_code
+        self.locations = locations
 
     @property
     def category_id(self) -> ServerType:
@@ -167,6 +170,14 @@ class ServerType(enum.IntEnum):
     CUSTOM = 3
 
 
+def parse_secure_internet(si: dict) -> Optional[SecureInternetServer]:
+        profiles = parse_profiles(si["profiles"])
+        locations = si["locations"]
+        # TODO: support contact and delisted
+        return SecureInternetServer(
+            si["identifier"], si["display_name"], [], profiles, si["country_code"], locations
+        )
+
 def parse_current_server(server_json: str) -> Optional[Server]:
     d = json.loads(server_json)
     t = ServerType(d["server_type"])
@@ -179,17 +190,11 @@ def parse_current_server(server_json: str) -> Optional[Server]:
         return InstituteServer(i["identifier"], i["display_name"], [], profiles)
     if t == ServerType.SECURE_INTERNET:
         si = d["secure_internet_server"]
-        profiles = parse_profiles(si["profiles"])
-        # TODO: support contact and delisted
-        return SecureInternetServer(
-            si["identifier"], si["display_name"], [], profiles, si["country_code"]
-        )
-
+        return parse_secure_internet(si)
     if t == ServerType.CUSTOM:
         c = d["custom_server"]
         profiles = parse_profiles(c["profiles"])
         return Server(c["identifier"], c["display_name"], profiles)
-
 
 def parse_profiles(profiles: dict) -> Profiles:
     returned = {}
@@ -199,6 +204,11 @@ def parse_profiles(profiles: dict) -> Profiles:
         returned[k] = Profile(k, v["display_name"], False)
     return Profiles(returned, profiles["current"])
 
+def parse_required_transition(transition_json: str, get: Callable) -> Tuple[int, Any]:
+    transition = json.loads(transition_json)
+    data_parsed = get(transition["data"])
+    cookie = transition["cookie"]
+    return cookie, data_parsed
 
 def parse_servers(server_json: str) -> List[Server]:
     d = json.loads(server_json)
@@ -219,13 +229,9 @@ def parse_servers(server_json: str) -> List[Server]:
 
     si = d.get("secure_internet_server", None)
     if si is not None:
-        profiles = parse_profiles(si["profiles"])
-        # TODO: support contact and delisted
-        servers.append(
-            SecureInternetServer(
-                si["identifier"], si["display_name"], [], profiles, si["country_code"]
-            )
-        )
+        si_parsed = parse_secure_internet(si)
+        if si_parsed is not None:
+            servers.append(si_parsed)
     return servers
 
 
@@ -276,6 +282,13 @@ class ServerDatabase:
         for s in self.configured:
             if server.identifier == s.identifier:
                 return s
+        return None
+
+    @property
+    def secure_internet(self) -> Optional[SecureInternetServer]:
+        for server in self.configured:
+            if isinstance(server, SecureInternetServer):
+                return server
         return None
 
     @property

@@ -27,7 +27,7 @@ from eduvpn_common import __version__ as commonver
 from eduvpn.connection import Validity
 from eduvpn.event.state import State, StateType
 from eduvpn.i18n import retrieve_country_name
-from eduvpn.server import StatusImage
+from eduvpn.server import StatusImage, Server, SecureInternetServer
 from eduvpn.settings import FLAG_PREFIX, IMAGE_PREFIX
 from eduvpn.ui import search
 from eduvpn.ui.stats import NetworkStats
@@ -782,9 +782,12 @@ For detailed information, see the log file located at:
         self.hide_loading_page()
 
     @ui_transition(State.ASK_PROFILE, StateType.ENTER)
-    def enter_ChooseProfile(self, new_state, profiles):
+    def enter_ChooseProfile(self, new_state, data):
+        self.show_back_button(True)
         self.show_page(self.choose_profile_page)
         self.profile_list.show()
+
+        setter, profiles = data
 
         profile_tree_view = self.profile_list
         profiles_list_model = Gtk.ListStore(GObject.TYPE_STRING, GObject.TYPE_PYOBJECT)
@@ -803,7 +806,7 @@ For detailed information, see the log file located at:
         profile_tree_view.set_model(sorted_model)
         profiles_list_model.clear()
         for profile_id, profile in profiles.profiles.items():
-            profiles_list_model.append([str(profile), profile_id])
+            profiles_list_model.append([str(profile), (setter, profile_id)])
 
     @ui_transition(State.ASK_PROFILE, StateType.LEAVE)
     def exit_ChooseProfile(self, old_state, data):
@@ -812,10 +815,12 @@ For detailed information, see the log file located at:
         self.profile_list.hide()
 
     @ui_transition(State.ASK_LOCATION, StateType.ENTER)
-    def enter_ChooseSecureInternetLocation(self, old_state, locations):
+    def enter_ChooseSecureInternetLocation(self, old_state, data):
         self.show_back_button(True)
         self.show_page(self.choose_location_page)
         self.location_list.show()
+
+        setter, locations = data
 
         location_tree_view = self.location_list
         location_list_model = Gtk.ListStore(
@@ -848,7 +853,7 @@ For detailed information, see the log file located at:
             else:
                 flag = GdkPixbuf.Pixbuf.new_from_file(flag_path)
             location_list_model.append(
-                [retrieve_country_name(location), flag, location]
+                [retrieve_country_name(location), flag, (setter, location)]
             )
 
     @ui_transition(State.ASK_LOCATION, StateType.LEAVE)
@@ -1116,7 +1121,7 @@ For detailed information, see the log file located at:
     def on_cancel_oauth_setup(self, _):
         logger.debug("clicked on cancel oauth setup")
 
-        self.call_model("cancel_oauth")
+        self.call_model("cancel")
 
     def on_change_location(self, _):
         self.call_model("change_secure_location")
@@ -1215,10 +1220,20 @@ For detailed information, see the log file located at:
         self, widget: TreeView, row: TreePath, _col: TreeViewColumn
     ) -> None:
         model = widget.get_model()
-        profile = model[row][1]
+        setter, profile = model[row][1]
         logger.debug(f"activated profile: {profile!r}")
 
-        self.call_model("set_profile", profile)
+        @run_in_background_thread("set-profile")
+        def set_profile():
+            try:
+                setter(profile)
+            except Exception as e:
+                if should_show_error(e):
+                    self.show_error_revealer(str(e))
+                log_exception(e)
+
+        set_profile()
+
         self.show_loading_page("Loading profile", "The profile has been selected")
 
     def profile_ask_reconnect(self) -> bool:
@@ -1282,10 +1297,19 @@ For detailed information, see the log file located at:
 
     def on_location_row_activated(self, widget, row, _col):
         model = widget.get_model()
-        location = model[row][2]
+        setter, location = model[row][2]
         logger.debug(f"activated location: {location!r}")
 
-        self.call_model("set_secure_location", location)
+        @run_in_background_thread("set-location")
+        def set_location():
+            try:
+                setter(location)
+            except Exception as e:
+                if should_show_error(e):
+                    self.show_error_revealer(str(e))
+                log_exception(e)
+
+        set_location()
         self.show_loading_page("Loading location", "The location is being configured")
 
     def on_acknowledge_error(self, event):
