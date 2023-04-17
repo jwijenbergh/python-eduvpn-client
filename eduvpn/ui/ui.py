@@ -504,7 +504,10 @@ For detailed information, see the log file located at:
         # However, when we add items again that are all smaller (e.g. for a new server), the combo box does not shrink back
         # The only proper way seems to be to recreate the combobox every time
         combo = Gtk.ComboBoxText.new()  # type: ignore
-        combo.set_model(profile_store)  # type: ignore
+        # Sort the model too
+        sorted_model = Gtk.TreeModelSort(model=profile_store)
+        sorted_model.set_sort_column_id(0, Gtk.SortType.ASCENDING)
+        combo.set_model(sorted_model)  # type: ignore
         combo.set_active(active_profile)
         combo.set_halign(Gtk.Align.CENTER)
         combo.connect("changed", self.on_profile_combo_changed)
