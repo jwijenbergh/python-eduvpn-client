@@ -493,8 +493,9 @@ For detailed information, see the log file located at:
         # Create a store of profiles
         profile_store = Gtk.ListStore(GObject.TYPE_STRING, GObject.TYPE_PYOBJECT)  # type: ignore
         active_profile = 0
-        for index, profile in enumerate(server_info.profiles.profiles):
-            if profile == server_info.profiles.current:
+        sorted_profiles = sorted(server_info.profiles.profiles, key=lambda p: str(p))
+        for index, profile in enumerate(sorted_profiles):
+            if index == server_info.profiles.current:
                 active_profile = index
             profile_store.append([str(profile), profile])  # type: ignore
 
@@ -505,9 +506,7 @@ For detailed information, see the log file located at:
         # The only proper way seems to be to recreate the combobox every time
         combo = Gtk.ComboBoxText.new()  # type: ignore
         # Sort the model too
-        sorted_model = Gtk.TreeModelSort(model=profile_store)
-        sorted_model.set_sort_column_id(0, Gtk.SortType.ASCENDING)
-        combo.set_model(sorted_model)  # type: ignore
+        combo.set_model(profile_store)  # type: ignore
         combo.set_active(active_profile)
         combo.set_halign(Gtk.Align.CENTER)
         combo.connect("changed", self.on_profile_combo_changed)
