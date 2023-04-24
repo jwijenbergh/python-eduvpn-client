@@ -435,19 +435,6 @@ class NMManager:
         con.add_setting(s_con)
         return con
 
-    def save_connection(
-        self,
-        ovpn: Ovpn,
-        private_key,
-        certificate,
-        callback,
-        default_gateway,
-        system_wide,
-    ):
-        _logger.debug("writing configuration to Network Manager")
-        new_con = self.import_ovpn_with_certificate(ovpn, private_key, certificate)
-        self.set_connection(new_con, callback, default_gateway)
-
     def start_openvpn_connection(
         self, ovpn: Ovpn, default_gateway, *, callback=None
     ) -> None:
@@ -752,28 +739,6 @@ class NMManager:
         uuid = con.get_uuid()
         status = con.get_state()
         return uuid, status
-
-
-@lru_cache(maxsize=1)
-def get_dbus() -> Optional["dbus.SystemBus"]:
-    """
-    Get the DBus system bus.
-
-    None is returned on failure.
-    """
-    if dbus is None:
-        logging.debug("DBus module could not be imported")
-        return None
-    try:
-        from dbus.mainloop.glib import DBusGMainLoop
-
-        DBusGMainLoop(set_as_default=True)
-        bus = dbus.SystemBus(private=True)
-    except Exception:
-        logging.debug("Unable to access dbus", exc_info=True)
-        return None
-    else:
-        return bus
 
 
 def action_with_mainloop(action: Callable):
