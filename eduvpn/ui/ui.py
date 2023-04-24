@@ -532,10 +532,15 @@ For detailed information, see the log file located at:
     def get_profile_combo_sorted(self, server_info) -> Tuple[int, Gtk.ListStore]:
         profile_store = Gtk.ListStore(GObject.TYPE_STRING, GObject.TYPE_PYOBJECT)  # type: ignore
         active_profile = 0
-        sorted_profiles = sorted(server_info.profiles.profiles.items(), key=lambda v: str(v[1]))
+        sorted_profiles = sorted(
+            server_info.profiles.profiles.items(), key=lambda v: str(v[1])
+        )
         index = 0
         for _id, profile in sorted_profiles:
-            if server_info.profiles.current is not None and profile.identifier == server_info.profiles.current.identifier:
+            if (
+                server_info.profiles.current is not None
+                and profile.identifier == server_info.profiles.current.identifier
+            ):
                 active_profile = index
             profile_store.append([str(profile), profile])  # type: ignore
         return active_profile, profile_store
@@ -689,7 +694,7 @@ For detailed information, see the log file located at:
         search.init_server_search(self)
 
         # asynchronously update the search results
-        #self.update_search_async(update_disco)
+        # self.update_search_async(update_disco)
 
     def exit_search(self):
         self.show_back_button(False)
@@ -961,7 +966,8 @@ For detailed information, see the log file located at:
 
         # Make sure the timer becomes more detailed after a certain time period
         self.connection_validity_timers.add_absolute(
-            partial(self.start_validity_countdown_detailed, validity), validity.countdown
+            partial(self.start_validity_countdown_detailed, validity),
+            validity.countdown,
         )
 
         # Show the button after a certain time period
@@ -1280,7 +1286,9 @@ For detailed information, see the log file located at:
             # Restore the previous profile
             if not self.profile_ask_reconnect():
                 self.set_same_profile = True
-                active_index, model = self.get_profile_combo_sorted(self.app.model.current_server)
+                active_index, model = self.get_profile_combo_sorted(
+                    self.app.model.current_server
+                )
                 combo.set_model(model)
                 combo.set_active(active_index)
                 return

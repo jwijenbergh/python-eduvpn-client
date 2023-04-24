@@ -11,12 +11,27 @@ from eduvpn_common.types import ReadRxBytes
 
 from eduvpn import nm
 from eduvpn.config import Configuration
-from eduvpn.connection import (Config, Connection, Token, parse_config, parse_tokens,
-                               parse_expiry)
+from eduvpn.connection import (
+    Config,
+    Connection,
+    Token,
+    parse_config,
+    parse_tokens,
+    parse_expiry,
+)
 from eduvpn.event.machine import StateMachine
 from eduvpn.event.state import State, StateType
 from eduvpn.keyring import DBusKeyring, InsecureFileKeyring, TokenKeyring
-from eduvpn.server import SecureInternetServer, ServerDatabase, parse_current_server, parse_locations, parse_profiles, parse_required_transition, parse_secure_internet, Server
+from eduvpn.server import (
+    SecureInternetServer,
+    ServerDatabase,
+    parse_current_server,
+    parse_locations,
+    parse_profiles,
+    parse_required_transition,
+    parse_secure_internet,
+    Server,
+)
 from eduvpn.utils import model_transition, run_in_background_thread
 from eduvpn.variants import ApplicationVariant
 
@@ -300,9 +315,7 @@ class ApplicationModel:
         self.clear_tokens(server)
         self.machine.go(State.MAIN, go_transition=True)
 
-    def connect_get_config(
-        self, server, prefer_tcp: bool = False
-    ) -> Config:
+    def connect_get_config(self, server, prefer_tcp: bool = False) -> Config:
         # We prefer TCP if the user has set it or UDP is determined to be blocked
         # TODO: handle discovery and tokens
         config = self.common.get_config(
@@ -353,7 +366,9 @@ class ApplicationModel:
             logger.warning("Got empty server, not saving token to the keyring")
             return
         tokens_parsed = parse_tokens(tokens)
-        if tokens is None or (tokens_parsed.access == "" and tokens_parsed.refresh == ""):
+        if tokens is None or (
+            tokens_parsed.access == "" and tokens_parsed.refresh == ""
+        ):
             logger.warning("Got empty tokens, not saving them to the keyring")
             return
         tokens_dict = {}
@@ -381,9 +396,7 @@ class ApplicationModel:
         # to override the prefer TCP setting
         if os.environ.get("EDUVPN_PREFER_TCP", "0") == "1":
             prefer_tcp = True
-        config = self.connect_get_config(
-            server, prefer_tcp=prefer_tcp
-        )
+        config = self.connect_get_config(server, prefer_tcp=prefer_tcp)
         if not config:
             raise Exception("No configuration available")
 

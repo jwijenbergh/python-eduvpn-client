@@ -37,6 +37,7 @@ except (ImportError, ValueError):
     # Just exit, there's nothing we can do here
     sys.exit(1)
 
+
 class ConnectionState(enum.Enum):
     CONNECTING = enum.auto()
     CONNECTED = enum.auto()

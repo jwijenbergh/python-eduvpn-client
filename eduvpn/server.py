@@ -171,12 +171,18 @@ class ServerType(enum.IntEnum):
 
 
 def parse_secure_internet(si: dict) -> Optional[SecureInternetServer]:
-        profiles = parse_profiles(si["profiles"])
-        locations = si["locations"]
-        # TODO: support contact and delisted
-        return SecureInternetServer(
-            si["identifier"], si["display_name"], [], profiles, si["country_code"], locations
-        )
+    profiles = parse_profiles(si["profiles"])
+    locations = si["locations"]
+    # TODO: support contact and delisted
+    return SecureInternetServer(
+        si["identifier"],
+        si["display_name"],
+        [],
+        profiles,
+        si["country_code"],
+        locations,
+    )
+
 
 def parse_current_server(server_json: str) -> Optional[Server]:
     d = json.loads(server_json)
@@ -196,6 +202,7 @@ def parse_current_server(server_json: str) -> Optional[Server]:
         profiles = parse_profiles(c["profiles"])
         return Server(c["identifier"], c["display_name"], profiles)
 
+
 def parse_profiles(profiles: dict) -> Profiles:
     returned = {}
     profile_map = profiles.get("map", {})
@@ -204,11 +211,13 @@ def parse_profiles(profiles: dict) -> Profiles:
         returned[k] = Profile(k, v["display_name"], False)
     return Profiles(returned, profiles["current"])
 
+
 def parse_required_transition(transition_json: str, get: Callable) -> Tuple[int, Any]:
     transition = json.loads(transition_json)
     data_parsed = get(transition["data"])
     cookie = transition["cookie"]
     return cookie, data_parsed
+
 
 def parse_servers(server_json: str) -> List[Server]:
     d = json.loads(server_json)

@@ -44,7 +44,7 @@ def get_validity_text(validity: Validity, detailed: bool) -> Tuple[bool, str]:
     # Not detailed, round the days and set hours to 0
     if not detailed:
         # round days
-        days += round(hours/24)
+        days += round(hours / 24)
     if days == 0:
         if hours == 0 and detailed:
             minutes = delta.seconds // 60
@@ -60,15 +60,15 @@ def get_validity_text(validity: Validity, detailed: bool) -> Tuple[bool, str]:
                 )
             else:
                 mstr = ngettext(
-                        "Valid for <b>{0} minute</b>",
-                        "Valid for <b>{0} minutes</b>",
-                        minutes,
-                    ).format(minutes)
+                    "Valid for <b>{0} minute</b>",
+                    "Valid for <b>{0} minutes</b>",
+                    minutes,
+                ).format(minutes)
                 sstr = ngettext(
-                        " and <b>{0} second</b>",
-                        " and <b>{0} seconds</b>",
-                        seconds,
-                    ).format(seconds)
+                    " and <b>{0} second</b>",
+                    " and <b>{0} seconds</b>",
+                    seconds,
+                ).format(seconds)
                 return (False, (mstr + sstr))
         else:
             return (
@@ -83,9 +83,9 @@ def get_validity_text(validity: Validity, detailed: bool) -> Tuple[bool, str]:
         ).format(days)
         hstr = ""
         if detailed:
-            hstr = ngettext(" and <b>{0} hour</b>", " and <b>{0} hours</b>", hours).format(
-                hours
-            )
+            hstr = ngettext(
+                " and <b>{0} hour</b>", " and <b>{0} hours</b>", hours
+            ).format(hours)
         return (False, (dstr + hstr))
 
 

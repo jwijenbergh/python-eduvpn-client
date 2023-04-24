@@ -15,10 +15,20 @@ from eduvpn.app import Application
 from eduvpn.connection import parse_expiry
 from eduvpn.event.machine import TRANSITIONS, State, StateMachine, StateType
 from eduvpn.i18n import retrieve_country_name
-from eduvpn.server import (InstituteServer, Profile, SecureInternetServer,
-                           Server, ServerDatabase)
-from eduvpn.settings import (CLIENT_ID, CONFIG_DIR_MODE, CONFIG_PREFIX,
-                             LETSCONNECT_CLIENT_ID, LETSCONNECT_CONFIG_PREFIX)
+from eduvpn.server import (
+    InstituteServer,
+    Profile,
+    SecureInternetServer,
+    Server,
+    ServerDatabase,
+)
+from eduvpn.settings import (
+    CLIENT_ID,
+    CONFIG_DIR_MODE,
+    CONFIG_PREFIX,
+    LETSCONNECT_CLIENT_ID,
+    LETSCONNECT_CONFIG_PREFIX,
+)
 from eduvpn.ui.search import ServerGroup, group_servers
 from eduvpn.ui.utils import get_validity_text, should_show_error
 from eduvpn.utils import cmd_transition, init_logger, run_in_background_thread
@@ -289,7 +299,9 @@ class CommandLine:
         print(f'Connected to: "{str(current)}" ({current.category})')
         validity = parse_expiry(self.common.get_expiry_times())
         valid_for = (
-            get_validity_text(validity, detailed=True)[1].replace("<b>", "").replace("</b>", "")
+            get_validity_text(validity, detailed=True)[1]
+            .replace("<b>", "")
+            .replace("</b>", "")
         )
         print(valid_for)
         print(f"Current profile: {str(current.profiles.current)}")
@@ -699,6 +711,8 @@ def eduvpn():
 
 
 def letsconnect():
-    _common = common.EduVPN(LETSCONNECT_CLIENT_ID, __version__, str(LETSCONNECT_CONFIG_PREFIX))
+    _common = common.EduVPN(
+        LETSCONNECT_CLIENT_ID, __version__, str(LETSCONNECT_CONFIG_PREFIX)
+    )
     cmd = CommandLine("Let's Connect!", LETS_CONNECT, _common)
     cmd.start()

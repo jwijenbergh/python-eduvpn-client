@@ -51,9 +51,11 @@ class Config:
     def __str__(self):
         return self.config
 
+
 def parse_tokens(tokens_json: str) -> Token:
     jsonT = json.loads(tokens_json)
     return Token(jsonT["access_token"], jsonT["refresh_token"], jsonT["expires_in"])
+
 
 def parse_config(config_json: str) -> Config:
     d = json.loads(config_json)
