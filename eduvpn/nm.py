@@ -87,18 +87,20 @@ class NMManager:
     def __init__(self, variant: ApplicationVariant):
         self.variant = variant
         try:
-            self.client = NM.Client.new(None)
+            self._client = NM.Client.new(None)
             self.wg_gateway_ip: Optional[ipaddress.IPv4Address] = None
         except Exception:
-            self.client = None
+            self._client = None
+
+    @property
+    def client(self) -> "NM.Client":
+        if self._client is None:
+            raise Exception("no client available")
+        return self._client
 
     @property
     def available(self) -> bool:
-        if NM is None:
-            return False
-        if self.client is None:
-            return False
-        return True
+        return self._client is not None
 
     # TODO: Move this somewhere else?
     def open_stats_file(self, filename: str) -> Optional[TextIO]:
