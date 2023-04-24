@@ -13,6 +13,7 @@ from tempfile import mkdtemp
 from typing import Any, Callable, Optional, TextIO, Tuple
 
 import gi
+import sys
 
 from eduvpn.ovpn import Ovpn
 from eduvpn.storage import get_uuid, set_uuid, write_ovpn
@@ -32,14 +33,9 @@ try:
     gi.require_version("NM", "1.0")
     from gi.repository import NM, GLib  # type: ignore
 except (ImportError, ValueError):
-    _logger.warning("Network Manager not available")
-    NM = None
-
-try:
-    import dbus
-except ImportError:
-    dbus = None
-
+    _logger.error("Network Manager not available. Client is exiting...")
+    # Just exit, there's nothing we can do here
+    sys.exit(1)
 
 class ConnectionState(enum.Enum):
     CONNECTING = enum.auto()
