@@ -8,7 +8,7 @@ import os
 import threading
 from functools import partial
 from gettext import gettext as _
-from typing import Callable, Optional, Type
+from typing import Callable, Optional, Tuple, Type
 
 import gi
 
@@ -529,8 +529,7 @@ For detailed information, see the log file located at:
         """
         self.current_shown_page = None
 
-    def recreate_profile_combo(self, server_info) -> None:
-        # Create a store of profiles
+    def get_profile_combo_sorted(self, server_info) -> Tuple[int, Gtk.ListStore]:
         profile_store = Gtk.ListStore(GObject.TYPE_STRING, GObject.TYPE_PYOBJECT)  # type: ignore
         active_profile = 0
         sorted_profiles = sorted(server_info.profiles.profiles.items(), key=lambda v: str(v[1]))
@@ -538,8 +537,12 @@ For detailed information, see the log file located at:
         for _id, profile in sorted_profiles:
             if server_info.profiles.current is not None and profile.identifier == server_info.profiles.current.identifier:
                 active_profile = index
-            profile_store.append([str(profile), _id])  # type: ignore
-            index += 1
+            profile_store.append([str(profile), profile])  # type: ignore
+        return active_profile, profile_store
+
+    def recreate_profile_combo(self, server_info) -> None:
+        # Create a store of profiles
+        active_profile, profile_store = self.get_profile_combo_sorted(server_info)
 
         # Create a new combobox
         # We create a new one every time because Gtk has some weird behaviour regarding the width of the combo box
@@ -1277,17 +1280,9 @@ For detailed information, see the log file located at:
             # Restore the previous profile
             if not self.profile_ask_reconnect():
                 self.set_same_profile = True
-                profiles = self.app.model.current_server.profiles
-                active_profile = 0
-                sorted_profiles = sorted(profiles.profiles, key=lambda p: str(p))
-                for index, profile in enumerate(sorted_profiles):
-                    if (
-                        profiles.current is not None
-                        and profile.identifier == profiles.current.identifier
-                    ):
-                        active_profile = index
-
-                combo.set_active(active_profile)
+                active_index, model = self.get_profile_combo_sorted(self.app.model.current_server)
+                combo.set_model(model)
+                combo.set_active(active_index)
                 return
 
         # Set profile and connect
