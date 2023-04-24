@@ -533,12 +533,10 @@ For detailed information, see the log file located at:
         # Create a store of profiles
         profile_store = Gtk.ListStore(GObject.TYPE_STRING, GObject.TYPE_PYOBJECT)  # type: ignore
         active_profile = 0
-        sorted_profiles = sorted(server_info.profiles.profiles, key=lambda p: str(p))
-        for index, profile in enumerate(sorted_profiles):
-            if (
-                server_info.profiles.current is not None
-                and profile.identifier == server_info.profiles.current.identifier
-            ):
+        sorted_profiles = sorted(server_info.profiles.profiles.items(), key=lambda v: str(v[1]))
+        index = 0
+        for _id, profile in sorted_profiles:
+            if server_info.profiles.current is not None and profile.identifier == server_info.profiles.current.identifier:
                 active_profile = index
             profile_store.append([str(profile), _id])  # type: ignore
             index += 1
@@ -649,7 +647,7 @@ For detailed information, see the log file located at:
         # Disable the profile combo box and switch
         self.connection_switch.set_sensitive(False)
         self.select_profile_combo.set_sensitive(False)
-        self.call_model("cancel_failover")
+        self.call_model("cancel")
 
     @ui_transition(State.DISCONNECTING, StateType.LEAVE)
     def exit_disconnecting(self, old_state: str, data):
