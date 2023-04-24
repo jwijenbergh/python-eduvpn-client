@@ -302,15 +302,12 @@ class ApplicationModel:
 
     def connect_get_config(
         self, server, prefer_tcp: bool = False
-    ) -> Optional[Config]:
+    ) -> Config:
         # We prefer TCP if the user has set it or UDP is determined to be blocked
         # TODO: handle discovery and tokens
         config = self.common.get_config(
             server.category_id, server.identifier, prefer_tcp
         )
-        if config is None:
-            logger.error("got empty config")
-            return None
         return parse_config(config)
 
     def clear_tokens(self, server):
