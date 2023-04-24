@@ -1286,7 +1286,7 @@ For detailed information, see the log file located at:
                 return
 
         # Set profile and connect
-        self.call_model("set_profile", profile, True)
+        self.call_model("set_profile", profile.identifier, True)
 
     def on_location_row_activated(self, widget, row, _col):
         model = widget.get_model()
