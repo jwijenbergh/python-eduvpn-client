@@ -302,7 +302,11 @@ class ServerDatabase:
 
     @property
     def current(self):
-        return parse_current_server(self.wrapper.get_current_server())
+        try:
+            return parse_current_server(self.wrapper.get_current_server())
+        except Exception as e:
+            logger.debug(f"failed to get current server: {str(e)}")
+            return None
 
     @property
     def configured(self):

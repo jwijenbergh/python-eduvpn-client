@@ -1,4 +1,5 @@
 from enum import IntEnum
+import threading
 from typing import Any, Callable, Dict, List, Tuple
 
 from eduvpn.event.state import State, StateType
@@ -148,6 +149,7 @@ class StateMachine:
         self.event_handler: EventHandler = EventHandler()
         self.current: State = State.INITIAL
         self.transitions: Transitions = transitions
+        self.lock = threading.Lock()
 
     def register_events(self, cls: Any):
         self.event_handler.change_class_callbacks(cls)
@@ -157,14 +159,18 @@ class StateMachine:
         return self.transitions.get(self.current, {})
 
     def has_back(self):
-        if self.current == State.MAIN:
+        if self.in_state(State.MAIN):
             return False
         return State.MAIN in self.current_transitions
 
     def back(self):
         self.go(State.MAIN, go_transition=True)
 
-    def go(self, state: State, data: Any = None, go_transition: bool = False):
+    def in_state(self, state: State):
+        with self.lock:
+            return self.current == state
+
+    def _go(self, state: State, data: Any = None, go_transition: bool = False):
         if not go_transition and state not in self.current_transitions:
             # Self transitions are a quiet fail
             if state == self.current:
@@ -175,3 +181,11 @@ class StateMachine:
         old_state = self.current
         self.current = state
         self.event_handler.run(old_state, state, data)
+
+    def go(self, state: State, data: Any = None, go_transition: bool = False, needs_lock: bool = True):
+        needs_lock = False
+        if needs_lock:
+            with self.lock:
+                self._go(state, data, go_transition)
+        else:
+            self._go(state, data, go_transition)

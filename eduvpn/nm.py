@@ -15,13 +15,14 @@ from typing import Any, Callable, Optional, TextIO, Tuple
 import gi
 import sys
 
+from eduvpn_common.main import Jar
 from eduvpn.ovpn import Ovpn
 from eduvpn.storage import get_uuid, set_uuid, write_ovpn
 from eduvpn.utils import run_in_glib_thread
 from eduvpn.variants import ApplicationVariant
 
 gi.require_version("NM", "1.0")  # noqa: E402
-from gi.repository.Gio import Task  # type: ignore
+from gi.repository.Gio import Cancellable, Task  # type: ignore
 
 _logger = logging.getLogger(__name__)
 
@@ -92,6 +93,7 @@ class NMManager:
             self.wg_gateway_ip: Optional[ipaddress.IPv4Address] = None
         except Exception:
             self._client = None
+        self.cancel_jar = Jar(lambda x: x.cancel())
 
     @property
     def client(self) -> "NM.Client":
@@ -366,11 +368,13 @@ class NMManager:
         callback: Optional[Callable] = None,
     ) -> None:
         _logger.debug("Adding new connection")
+        c = self.new_cancellable()
         self.client.add_connection_async(
             connection=connection,
             save_to_disk=True,
             callback=add_connection_callback,
-            user_data=(self, callback),
+            cancellable=c,
+            user_data=(self, c, callback),
         )
 
     @run_in_glib_thread
@@ -389,11 +393,12 @@ class NMManager:
             if setting.get_name() == "connection":
                 setting.props.uuid = old_con.get_uuid()
         old_con.replace_settings_from_connection(new_con)
+        c = self.new_cancellable()
         old_con.commit_changes_async(
             save_to_disk=True,
-            cancellable=None,
+            cancellable=c,
             callback=update_connection_callback,
-            user_data=(self, callback),
+            user_data=(self, c, callback),
         )
 
     def set_connection(
@@ -546,6 +551,23 @@ class NMManager:
 
         self.set_connection(profile, callback, default_gateway)  # type: ignore
 
+    def new_cancellable(self):
+        c = Cancellable.new()
+        self.cancel_jar.add(c)
+        c.connect(lambda: self.delete_cancellable(c))
+        return c
+
+    def cancel(self) -> bool:
+        needed_cancel = len(self.cancel_jar.cookies) > 0
+        self.cancel_jar.cancel()
+        return needed_cancel
+
+    def delete_cancellable(self, c):
+        try:
+            self.cancel_jar.delete(c)
+        except ValueError:
+            pass
+
     @run_in_glib_thread
     def activate_connection(self, callback: Optional[Callable] = None) -> None:
         con = self.client.get_connection_by_uuid(self.uuid)
@@ -558,7 +580,11 @@ class NMManager:
             GLib.idle_add(lambda: self.activate_connection(callback))
             return
 
-        def activate_connection_callback(a_client, res, callback=None):
+        def activate_connection_callback(a_client, res, user_data=None):
+            callback = None
+            if user_data is not None:
+                c, callback = user_data
+                self.delete_cancellable(c)
             try:
                 result = a_client.activate_connection_finish(res)
             except Exception as e:
@@ -584,8 +610,9 @@ class NMManager:
 
                 signal = self.active_connection.connect("state-changed", changed_state)
 
+        c = self.new_cancellable()
         self.client.activate_connection_async(
-            connection=con, callback=activate_connection_callback, user_data=callback
+            connection=con, callback=activate_connection_callback, cancellable=c, user_data=(c, callback)
         )
 
     def deactivate_connection(self, callback: Optional[Callable] = None) -> None:
@@ -607,7 +634,11 @@ class NMManager:
         _logger.debug(f"deactivate_connection uuid: {uuid} connection: {con}")
         if con:
 
-            def on_deactivate_connection(a_client: "NM.Client", res, callback=None):
+            def on_deactivate_connection(a_client: "NM.Client", res, user_data=None):
+                callback = None
+                if user_data is not None:
+                    c, callback = user_data
+                    self.delete_cancellable(c)
                 try:
                     result = a_client.deactivate_connection_finish(res)
                 except Exception as e:
@@ -617,8 +648,9 @@ class NMManager:
                 finally:
                     self.delete_connection(callback)
 
+            c = self.new_cancellable()
             self.client.deactivate_connection_async(
-                active=con, callback=on_deactivate_connection, user_data=callback
+                active=con, callback=on_deactivate_connection, cancellable=c, user_data=(c, callback)
             )
         else:
             _logger.debug("No active connection to deactivate")
@@ -638,7 +670,11 @@ class NMManager:
             return
 
         # Delete the connection and after that do the callback
-        def on_deleted(a_con: "NM.RemoteConnection", res, callback=None):
+        def on_deleted(a_con: "NM.RemoteConnection", res, user_data=None):
+            callback = None
+            if user_data is not None:
+                c, callback = user_data
+                self.delete_cancellable(c)
             try:
                 result = a_con.delete_finish(res)
             except Exception as e:
@@ -649,7 +685,8 @@ class NMManager:
                 if callback:
                     callback()
 
-        con.delete_async(callback=on_deleted, user_data=callback)
+        c = self.new_cancellable()
+        con.delete_async(callback=on_deleted, cancellable=c, user_data=(c, callback))
 
     @property
     def wireguard_device(self) -> Optional["NM.DeviceWireGuard"]:
@@ -667,7 +704,11 @@ class NMManager:
 
     @run_in_glib_thread
     def deactivate_connection_wg(self, callback: Optional[Callable] = None) -> None:
-        def on_disconnect(a_device: "NM.DeviceWireGuard", res, callback=None):
+        def on_disconnect(a_device: "NM.DeviceWireGuard", res, user_data=None):
+            callback = None
+            if user_data is not None:
+                c, callback = user_data
+                self.delete_cancellable(c)
             try:
                 result = a_device.disconnect_finish(res)
             except Exception as e:
@@ -682,7 +723,8 @@ class NMManager:
         if device is None:
             _logger.warning("Cannot disconnect, no WireGuard device")
             return
-        device.disconnect_async(callback=on_disconnect, user_data=callback)
+        c = self.new_cancellable()
+        device.disconnect_async(callback=on_disconnect, cancellable=c, user_data=(c, callback))
 
     def subscribe_to_status_changes(
         self,
@@ -756,9 +798,10 @@ def action_with_mainloop(action: Callable):
 
 
 def add_connection_callback(
-    client: NM.Client, result: Task, user_data: Tuple[NMManager, Optional[Callable]]
+    client: NM.Client, result: Task, user_data
 ) -> None:
-    object, callback = user_data
+    object, c, callback = user_data
+    object.delete_cancellable(c)
     new_con = client.add_connection_finish(result)
     object.uuid = new_con.get_uuid()
     _logger.debug(f"Connection added for uuid: {object.uuid}")
@@ -767,9 +810,10 @@ def add_connection_callback(
 
 
 def update_connection_callback(
-    remote_connection, result, user_data: Tuple[NMManager, Optional[Callable]]
+    remote_connection, result, user_data
 ):
-    object, callback = user_data
+    object, c, callback = user_data
+    object.delete_cancellable(c)
     res = remote_connection.commit_changes_finish(result)
     _logger.debug(
         f"Connection updated for uuid: {object.uuid}, result: {res}, remote_con: {remote_connection}"

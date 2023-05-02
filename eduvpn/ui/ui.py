@@ -341,11 +341,13 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         register()
 
     @run_in_background_thread("call-model")
-    def call_model(self, func_name: str, *args):
+    def call_model(self, func_name: str, *args, callback=None):
         func = getattr(self.app.model, func_name, None)
         if func:
             try:
-                func(*(args))
+                res = func(*(args))
+                if callback:
+                    callback(res)
             except Exception as e:
                 if should_show_error(e):
                     self.show_error_revealer(str(e))
@@ -636,14 +638,14 @@ For detailed information, see the log file located at:
         self.connection_status_image.set_from_file(StatusImage.CONNECTING.path)
         self.set_connection_switch_state(True)
         # Disable the profile combo box and switch
-        self.connection_switch.set_sensitive(False)
+        #self.connection_switch.set_sensitive(False)
         self.select_profile_combo.set_sensitive(False)
         self.connection_session_label.hide()
 
     @ui_transition(State.CONNECTING, StateType.LEAVE)
     def exit_connecting(self, old_state: str, data):
         # Re-enable the profile combo box and switch
-        self.connection_switch.set_sensitive(True)
+        #self.connection_switch.set_sensitive(True)
         self.select_profile_combo.set_sensitive(True)
         self.connection_session_label.show()
 
@@ -653,14 +655,14 @@ For detailed information, see the log file located at:
         self.connection_status_image.set_from_file(StatusImage.CONNECTING.path)
         self.set_connection_switch_state(False)
         # Disable the profile combo box and switch
-        self.connection_switch.set_sensitive(False)
+        #self.connection_switch.set_sensitive(False)
         self.select_profile_combo.set_sensitive(False)
         self.call_model("cancel")
 
     @ui_transition(State.DISCONNECTING, StateType.LEAVE)
     def exit_disconnecting(self, old_state: str, data):
         # Re-enable the profile combo box and switch
-        self.connection_switch.set_sensitive(True)
+        #self.connection_switch.set_sensitive(True)
         self.select_profile_combo.set_sensitive(True)
 
     @run_in_background_thread("update-search-async")
@@ -1153,13 +1155,21 @@ For detailed information, see the log file located at:
 
         if state is not self.connection_switch_state:
             self.connection_switch_state = state
-            # The user has toggled the connection switch,
-            # as opposed to the ui itself setting it.
-            if state:
-                self.call_model("activate_connection")
-            else:
-                self.stop_connection_info()
-                self.call_model("deactivate_connection")
+            # Cancel everything if something was in progress
+            # We return if something from NM was canceled
+            def on_canceled(canceled: bool):
+                if canceled:
+                    self.update_connection_status(state)
+                    return
+                # The user has toggled the connection switch,
+                # as opposed to the ui itself setting it.
+                if state:
+                    self.call_model("activate_connection")
+                else:
+                    self.stop_connection_info()
+                    self.call_model("deactivate_connection")
+
+            self.call_model("cancel", callback=on_canceled)
         return True
 
     def pause_connection_info(self) -> None:

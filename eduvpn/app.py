@@ -176,10 +176,10 @@ class ApplicationModel:
             set_location = lambda loc: self.common.cookie_reply(cookie, loc)
             data_conv = (set_location, profiles)
 
-        self.machine.go(new, data_conv, go_transition=True)
+        self.machine.go(new, data_conv, go_transition=True, needs_lock=False)
 
         if new == State.GOT_CONFIG:
-            self.machine.go(State.DISCONNECTED, self.server_db.current)
+            self.machine.go(State.DISCONNECTED, self.server_db.current, needs_lock=False)
         return True
 
     def register(self, debug: bool):
@@ -187,7 +187,11 @@ class ApplicationModel:
         self.common.set_token_handler(self.load_tokens, self.save_tokens)
 
     def cancel(self):
+        # Cancel any eduvpn-common operation
         self.common.cancel()
+
+        # Cancel any NetworkManager operation
+        return self.nm_manager.cancel()
 
     @property
     def server_db(self):
@@ -305,7 +309,8 @@ class ApplicationModel:
 
     def add(self, server, callback=None):
         # TODO: handle discovery types
-        self.common.add_server(server.category_id, server.identifier)
+        with self.machine.lock:
+            self.common.add_server(server.category_id, server.identifier)
         if callback:
             callback(server)
 
@@ -313,7 +318,7 @@ class ApplicationModel:
         self.common.remove_server(server.category_id, server.identifier)
         # Delete tokens from the keyring
         self.clear_tokens(server)
-        self.machine.go(State.MAIN, go_transition=True)
+        self.machine.back()
 
     def connect_get_config(self, server, prefer_tcp: bool = False) -> Config:
         # We prefer TCP if the user has set it or UDP is determined to be blocked
@@ -470,8 +475,14 @@ class ApplicationModel:
     ):
         if not self.current_server:
             return
+        self.machine.lock.acquire()
 
-        self.connect(self.current_server, callback, prefer_tcp=prefer_tcp)
+        def on_connected():
+            if callback:
+                callback()
+            self.machine.lock.release()
+
+        self.connect(self.current_server, on_connected, prefer_tcp=prefer_tcp)
 
     def cleanup(self):
         # We retry this cleanup 2 times
@@ -497,6 +508,9 @@ class ApplicationModel:
                 break
 
     def deactivate_connection(self, callback: Optional[Callable] = None) -> None:
+        if not self.machine.in_state(State.CONNECTED):
+            return
+        self.machine.lock.acquire()
         self.set_disconnecting()
 
         @run_in_background_thread("on-disconnected")
@@ -506,7 +520,7 @@ class ApplicationModel:
             self.set_disconnected()
             if callback:
                 callback()
-
+            self.machine.lock.release()
         self.disconnect(on_disconnected)
 
     def search_predefined(self, query: str) -> Iterator[Any]:
