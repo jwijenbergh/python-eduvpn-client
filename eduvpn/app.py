@@ -186,12 +186,30 @@ class ApplicationModel:
         self.common.register(handler=self.transition, debug=debug)
         self.common.set_token_handler(self.load_tokens, self.save_tokens)
 
-    def cancel(self):
+    def cancel(self, callback=None):
         # Cancel any eduvpn-common operation
         self.common.cancel()
 
         # Cancel any NetworkManager operation
-        return self.nm_manager.cancel()
+        handled = self.nm_manager.cancel()
+        if handled:
+            if callback:
+                callback(True)
+            return
+
+        # Delete connection if disconnecting...
+        if not self.is_disconnecting():
+            if callback:
+                callback(False)
+            return
+
+        def on_deleted(deleted: bool):
+            if deleted:
+                self.set_disconnected()
+            if callback:
+                callback(deleted)
+
+        self.nm_manager.delete_connection(on_deleted)
 
     @property
     def server_db(self):
@@ -403,15 +421,25 @@ class ApplicationModel:
             prefer_tcp = True
         config = self.connect_get_config(server, prefer_tcp=prefer_tcp)
         if not config:
+            if callback:
+                callback(False)
             raise Exception("No configuration available")
 
-        def on_connected():
-            self.set_connected()
+        def on_connected(success: bool):
+            if success:
+                self.set_connected()
+            else:
+                self.set_disconnected()
             if callback:
-                callback()
+                callback(success)
 
-        def on_connect(_):
-            self.nm_manager.activate_connection(on_connected)
+        def on_connect(success: bool):
+            if success:
+                self.nm_manager.activate_connection(on_connected)
+            else:
+                self.set_disconnected()
+                if callback:
+                    callback(False)
 
         def connect(config):
             connection = Connection.parse(config)
@@ -421,12 +449,9 @@ class ApplicationModel:
         connect(config)
 
     def reconnect(self, callback: Optional[Callable] = None, prefer_tcp: bool = False):
-        def on_connected():
-            if callback:
-                callback()
-
-        def on_disconnected():
-            self.activate_connection(on_connected, prefer_tcp=prefer_tcp)
+        def on_disconnected(success: bool):
+            if success:
+                self.activate_connection(callback, prefer_tcp=prefer_tcp)
 
         # Reconnect
         self.deactivate_connection(on_disconnected)
@@ -454,7 +479,9 @@ class ApplicationModel:
     def set_profile(self, profile: str, connect=False):
         was_connected = self.is_connected()
 
-        def do_profile():
+        def do_profile(success: bool = True):
+            if not success:
+                return
             # Set the profile ID
             self.common.set_profile(profile)
 
@@ -475,12 +502,10 @@ class ApplicationModel:
     ):
         if not self.current_server:
             return
-        self.machine.lock.acquire()
 
-        def on_connected():
+        def on_connected(success: bool):
             if callback:
-                callback()
-            self.machine.lock.release()
+                callback(success)
 
         self.connect(self.current_server, on_connected, prefer_tcp=prefer_tcp)
 
@@ -510,17 +535,23 @@ class ApplicationModel:
     def deactivate_connection(self, callback: Optional[Callable] = None) -> None:
         if not self.machine.in_state(State.CONNECTED):
             return
-        self.machine.lock.acquire()
         self.set_disconnecting()
 
-        @run_in_background_thread("on-disconnected")
-        def on_disconnected():
+        @run_in_background_thread("on-disconnect-cleanup")
+        def on_disconnect_success():
             # Cleanup the connection by sending / disconnect
             self.cleanup()
             self.set_disconnected()
             if callback:
-                callback()
-            self.machine.lock.release()
+                callback(True)
+
+        def on_disconnected(success: bool):
+            if success:
+                on_disconnect_success()
+            else:
+                self.set_connected()
+                if callback:
+                    callback(False)
         self.disconnect(on_disconnected)
 
     def search_predefined(self, query: str) -> Iterator[Any]:
@@ -555,6 +586,9 @@ class ApplicationModel:
 
     def is_disconnected(self) -> bool:
         return self.machine.current == State.DISCONNECTED
+
+    def is_disconnecting(self) -> bool:
+        return self.machine.current == State.DISCONNECTING
 
     def is_oauth_started(self) -> bool:
         return self.machine.current == State.OAUTH_STARTED

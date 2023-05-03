@@ -192,7 +192,6 @@ def parse_current_server(server_json: str) -> Optional[Server]:
     if t == ServerType.INSTITUTE_ACCESS:
         i = d["institute_access_server"]
         profiles = parse_profiles(i["profiles"])
-        # TODO
         return InstituteServer(i["identifier"], i["display_name"], [], profiles)
     if t == ServerType.SECURE_INTERNET:
         si = d["secure_internet_server"]

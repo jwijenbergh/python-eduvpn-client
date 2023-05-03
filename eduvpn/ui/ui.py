@@ -341,13 +341,11 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         register()
 
     @run_in_background_thread("call-model")
-    def call_model(self, func_name: str, *args, callback=None):
+    def call_model(self, func_name: str, *args):
         func = getattr(self.app.model, func_name, None)
         if func:
             try:
-                res = func(*(args))
-                if callback:
-                    callback(res)
+                func(*(args))
             except Exception as e:
                 if should_show_error(e):
                     self.show_error_revealer(str(e))
@@ -539,12 +537,10 @@ For detailed information, see the log file located at:
         )
         index = 0
         for _id, profile in sorted_profiles:
-            if (
-                server_info.profiles.current is not None
-                and profile.identifier == server_info.profiles.current.identifier
-            ):
+            if _id == server_info.profiles.current_id:
                 active_profile = index
             profile_store.append([str(profile), profile])  # type: ignore
+            index += 1
         return active_profile, profile_store
 
     def recreate_profile_combo(self, server_info) -> None:
@@ -655,15 +651,16 @@ For detailed information, see the log file located at:
         self.connection_status_image.set_from_file(StatusImage.CONNECTING.path)
         self.set_connection_switch_state(False)
         # Disable the profile combo box and switch
-        #self.connection_switch.set_sensitive(False)
+        self.connection_switch.set_sensitive(False)
         self.select_profile_combo.set_sensitive(False)
-        self.call_model("cancel")
+        self.connection_session_label.hide()
 
     @ui_transition(State.DISCONNECTING, StateType.LEAVE)
     def exit_disconnecting(self, old_state: str, data):
         # Re-enable the profile combo box and switch
-        #self.connection_switch.set_sensitive(True)
+        self.connection_switch.set_sensitive(True)
         self.select_profile_combo.set_sensitive(True)
+        self.connection_session_label.hide()
 
     @run_in_background_thread("update-search-async")
     def update_search_async(self, update_disco: Callable):
@@ -1169,7 +1166,7 @@ For detailed information, see the log file located at:
                     self.stop_connection_info()
                     self.call_model("deactivate_connection")
 
-            self.call_model("cancel", callback=on_canceled)
+            self.call_model("cancel", on_canceled)
         return True
 
     def pause_connection_info(self) -> None:

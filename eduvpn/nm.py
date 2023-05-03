@@ -368,7 +368,7 @@ class NMManager:
         callback: Optional[Callable] = None,
     ) -> None:
         _logger.debug("Adding new connection")
-        c = self.new_cancellable()
+        c = self.new_cancellable(callback)
         self.client.add_connection_async(
             connection=connection,
             save_to_disk=True,
@@ -393,7 +393,7 @@ class NMManager:
             if setting.get_name() == "connection":
                 setting.props.uuid = old_con.get_uuid()
         old_con.replace_settings_from_connection(new_con)
-        c = self.new_cancellable()
+        c = self.new_cancellable(callback)
         old_con.commit_changes_async(
             save_to_disk=True,
             cancellable=c,
@@ -551,10 +551,10 @@ class NMManager:
 
         self.set_connection(profile, callback, default_gateway)  # type: ignore
 
-    def new_cancellable(self):
+    def new_cancellable(self, callback=None):
         c = Cancellable.new()
         self.cancel_jar.add(c)
-        c.connect(lambda: self.delete_cancellable(c))
+        c.connect(lambda: self.delete_cancellable(c, callback))
         return c
 
     def cancel(self) -> bool:
@@ -562,11 +562,13 @@ class NMManager:
         self.cancel_jar.cancel()
         return needed_cancel
 
-    def delete_cancellable(self, c):
+    def delete_cancellable(self, c, callback=None):
         try:
             self.cancel_jar.delete(c)
         except ValueError:
             pass
+        if callback:
+            callback(False)
 
     @run_in_glib_thread
     def activate_connection(self, callback: Optional[Callable] = None) -> None:
@@ -606,11 +608,11 @@ class NMManager:
                     ):
                         if signal:
                             active.disconnect(signal)
-                        callback()
+                        callback(True)
 
                 signal = self.active_connection.connect("state-changed", changed_state)
 
-        c = self.new_cancellable()
+        c = self.new_cancellable(callback)
         self.client.activate_connection_async(
             connection=con, callback=activate_connection_callback, cancellable=c, user_data=(c, callback)
         )
@@ -636,19 +638,24 @@ class NMManager:
 
             def on_deactivate_connection(a_client: "NM.Client", res, user_data=None):
                 callback = None
-                if user_data is not None:
-                    c, callback = user_data
-                    self.delete_cancellable(c)
                 try:
                     result = a_client.deactivate_connection_finish(res)
                 except Exception as e:
-                    _logger.error(e)
+                    _logger.error(f"deactive_connection_async exception: {e}")
                 else:
                     _logger.debug(f"deactivate_connection_async result: {result}")
                 finally:
-                    self.delete_connection(callback)
+                    callback = None
+                    if user_data is not None:
+                        c, callback = user_data
+                        self.delete_cancellable(c)
+                    def on_deleted(success: bool):
+                        if callback:
+                            callback(True)
 
-            c = self.new_cancellable()
+                    self.delete_connection(on_deleted)
+
+            c = self.new_cancellable(callback)
             self.client.deactivate_connection_async(
                 active=con, callback=on_deactivate_connection, cancellable=c, user_data=(c, callback)
             )
@@ -659,33 +666,33 @@ class NMManager:
     def delete_connection(self, callback: Callable) -> None:
         # We run the disconnected callback early if a delete fail happens
         if self.uuid is None:
-            _logger.warning("No uuid found for deleting the connection")
-            callback()
+            _logger.debug("No uuid found for deleting the connection")
+            callback(False)
             return
 
         con = self.client.get_connection_by_uuid(self.uuid)
         if con is None:
-            _logger.warning(f"No uuid connection found to delete with uuid {uuid}")
-            callback()
+            _logger.debug(f"No uuid connection found to delete with uuid {uuid}")
+            callback(False)
             return
 
         # Delete the connection and after that do the callback
         def on_deleted(a_con: "NM.RemoteConnection", res, user_data=None):
             callback = None
-            if user_data is not None:
-                c, callback = user_data
-                self.delete_cancellable(c)
             try:
                 result = a_con.delete_finish(res)
             except Exception as e:
-                _logger.error(e)
+                _logger.error(f"delete_connection_async exception: {e}")
             else:
                 _logger.debug(f"delete_async result: {result}")
             finally:
-                if callback:
-                    callback()
+                if user_data is not None:
+                    c, callback = user_data
+                    self.delete_cancellable(c)
+                    if callback:
+                        callback(True)
 
-        c = self.new_cancellable()
+        c = self.new_cancellable(callback)
         con.delete_async(callback=on_deleted, cancellable=c, user_data=(c, callback))
 
     @property
@@ -706,9 +713,6 @@ class NMManager:
     def deactivate_connection_wg(self, callback: Optional[Callable] = None) -> None:
         def on_disconnect(a_device: "NM.DeviceWireGuard", res, user_data=None):
             callback = None
-            if user_data is not None:
-                c, callback = user_data
-                self.delete_cancellable(c)
             try:
                 result = a_device.disconnect_finish(res)
             except Exception as e:
@@ -716,14 +720,22 @@ class NMManager:
             else:
                 _logger.debug(f"disconnect_async result: {result}")
             finally:
-                self.delete_connection(callback)
+                callback = None
+                if user_data is not None:
+                    c, callback = user_data
+                    self.delete_cancellable(c)
+                def on_deleted(success: bool):
+                    # even if it cannot be deleted, the deactive is still successful
+                    if callback:
+                        callback(True)
+                self.delete_connection(on_deleted)
 
         _logger.debug(f"disconnect uuid: {uuid}")
         device = self.wireguard_device
         if device is None:
             _logger.warning("Cannot disconnect, no WireGuard device")
             return
-        c = self.new_cancellable()
+        c = self.new_cancellable(callback)
         device.disconnect_async(callback=on_disconnect, cancellable=c, user_data=(c, callback))
 
     def subscribe_to_status_changes(
@@ -801,25 +813,38 @@ def add_connection_callback(
     client: NM.Client, result: Task, user_data
 ) -> None:
     object, c, callback = user_data
-    object.delete_cancellable(c)
-    new_con = client.add_connection_finish(result)
-    object.uuid = new_con.get_uuid()
-    _logger.debug(f"Connection added for uuid: {object.uuid}")
-    if callback is not None:
-        callback(new_con is not None)
+    try:
+        new_con = client.add_connection_finish(result)
+    except Exception as e:
+        object.delete_cancellable(c)
+        _logger.error(f"add connection error: {e}")
+        if callback is not None:
+            callback(False)
+    else:
+        object.delete_cancellable(c)
+        object.uuid = new_con.get_uuid()
+        _logger.debug(f"Connection added for uuid: {object.uuid}")
+        if callback is not None:
+            callback(new_con is not None)
 
 
 def update_connection_callback(
     remote_connection, result, user_data
 ):
     object, c, callback = user_data
-    object.delete_cancellable(c)
-    res = remote_connection.commit_changes_finish(result)
-    _logger.debug(
-        f"Connection updated for uuid: {object.uuid}, result: {res}, remote_con: {remote_connection}"
-    )
-    if callback is not None:
-        callback(result)
+    try:
+        res = remote_connection.commit_changes_finish(result)
+    except Exception as e:
+        object.delete_cancellable(c)
+        _logger.error(f"update connection error: {e}")
+        if callback is not None:
+            callback(False)
+    else:
+        _logger.debug(
+            f"Connection updated for uuid: {object.uuid}, result: {res}, remote_con: {remote_connection}"
+        )
+        if callback is not None:
+            callback(result)
 
 
 def is_wireguard_supported() -> bool:
