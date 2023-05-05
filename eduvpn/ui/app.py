@@ -103,11 +103,13 @@ class EduVpnGtkApplication(Gtk.Application):
         logger.debug("quit")
         # Deregister the common library to save settings
         try:
-            self.common.deregister()
+            def on_canceled(_):
+                self.common.deregister()
+                self.quit()  # type: ignore
+            self.app.model.cancel(on_canceled)
         # Deregister is best effort
         except Exception as e:
             logger.debug("failed deregistering library", e)
-        self.quit()  # type: ignore
 
     def on_window_closed(self) -> None:
         logger.debug("window closed")

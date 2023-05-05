@@ -186,30 +186,12 @@ class ApplicationModel:
         self.common.register(handler=self.transition, debug=debug)
         self.common.set_token_handler(self.load_tokens, self.save_tokens)
 
-    def cancel(self, callback=None):
+    def cancel(self):
         # Cancel any eduvpn-common operation
         self.common.cancel()
 
         # Cancel any NetworkManager operation
-        handled = self.nm_manager.cancel()
-        if handled:
-            if callback:
-                callback(True)
-            return
-
-        # Delete connection if disconnecting...
-        if not self.is_disconnecting():
-            if callback:
-                callback(False)
-            return
-
-        def on_deleted(deleted: bool):
-            if deleted:
-                self.set_disconnected()
-            if callback:
-                callback(deleted)
-
-        self.nm_manager.delete_connection(on_deleted)
+        self.nm_manager.cancel()
 
     @property
     def server_db(self):
@@ -421,9 +403,10 @@ class ApplicationModel:
             prefer_tcp = True
         config = self.connect_get_config(server, prefer_tcp=prefer_tcp)
         if not config:
+            logger.warning("no configuration available")
             if callback:
                 callback(False)
-            raise Exception("No configuration available")
+            return
 
         def on_connected(success: bool):
             if success:
@@ -487,6 +470,7 @@ class ApplicationModel:
 
             # Connect if we should and if we were previously connected
             if connect and was_connected:
+                self.set_connecting()
                 self.activate_connection()
 
         # Deactivate connection if we are connected
@@ -500,6 +484,8 @@ class ApplicationModel:
     def activate_connection(
         self, callback: Optional[Callable] = None, prefer_tcp: bool = False
     ):
+        if not self.machine.in_state(State.DISCONNECTED):
+            return
         if not self.current_server:
             return
 
@@ -509,6 +495,8 @@ class ApplicationModel:
 
         self.connect(self.current_server, on_connected, prefer_tcp=prefer_tcp)
 
+
+    @run_in_background_thread("cleanup")
     def cleanup(self):
         # We retry this cleanup 2 times
         retries = 2
@@ -619,18 +607,20 @@ class Application:
     def on_network_update_callback(self, state, initial=False):
         try:
             if state == nm.ConnectionState.CONNECTED:
-                # Already connected
-                if self.model.is_connected():
-                    return
-                if self.model.is_connecting() or initial:
-                    self.model.set_connected()
-            elif state == nm.ConnectionState.CONNECTING:
-                if self.model.is_disconnected():
+                try:
                     self.model.set_connecting()
+                except Exception as e:
+                    pass
+                # Already connected
+                self.model.set_connected()
+            elif state == nm.ConnectionState.CONNECTING:
+                self.model.set_connecting()
             elif state == nm.ConnectionState.DISCONNECTED:
-                if self.model.is_connected():
+                try:
                     self.model.set_disconnecting()
-                    self.model.set_disconnected()
+                except Exception as e:
+                    pass
+                self.model.set_disconnected()
         except Exception:
             return
 
