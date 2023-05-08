@@ -306,6 +306,7 @@ class ApplicationModel:
     def go_back(self):
         self.cancel()
         self.machine.back()
+        self.common.set_state(State.MAIN)
 
     def add(self, server, callback=None):
         # TODO: handle discovery types
