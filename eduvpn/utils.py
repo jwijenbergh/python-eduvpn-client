@@ -11,8 +11,8 @@ from typing import Callable, Optional, Union
 
 from eduvpn_common.main import WrappedError
 
-from eduvpn.event.machine import class_state_transition
-from eduvpn.event.state import State, StateType
+from eduvpn_common.event import class_state_transition
+from eduvpn_common.state import State, StateType
 
 logger = logging.getLogger(__file__)
 
@@ -40,27 +40,22 @@ def model_transition(state: State, state_type: StateType) -> Callable:
             except Exception as e:
                 log_exception(e)
                 # Run the error state event
-                self.machine.event_handler.run(
+                self.common.event_handler.run(
                     get_ui_state(ERROR_STATE),
                     get_ui_state(ERROR_STATE),
                     str(e),
                 )
-
-                # Go back to the previous state as the model transition was not successful
-                # Do this only if we're not already in the main state
-                if not self.machine.current == State.MAIN:
-                    self.machine.back()
                 return
 
             other_ui_state = get_ui_state(other_state)
             ui_state = get_ui_state(state)
             # We can then pass it to the UI
             if state_type == StateType.ENTER:
-                self.machine.event_handler.run(
+                self.common.event_handler.run(
                     other_ui_state, ui_state, model_converted
                 )
             else:
-                self.machine.event_handler.run(
+                self.common.event_handler.run(
                     ui_state, other_ui_state, model_converted
                 )
 

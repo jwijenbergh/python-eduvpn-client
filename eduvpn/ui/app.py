@@ -10,7 +10,7 @@ from gi.repository.Gio import ApplicationCommandLine
 
 from eduvpn import i18n, notify
 from eduvpn.app import Application
-from eduvpn.event.machine import TRANSITIONS, State, StateMachine, StateType
+from eduvpn_common.state import State, StateType
 from eduvpn.settings import CONFIG_DIR_MODE
 from eduvpn.ui.ui import EduVpnGtkWindow
 from eduvpn.utils import init_logger, run_in_background_thread, ui_transition
@@ -30,10 +30,9 @@ class EduVpnGtkApplication(Gtk.Application):
             **kwargs,
         )
 
-        self.machine = StateMachine(TRANSITIONS)
-        self.app = Application(app_variant, common, self.machine)
+        self.app = Application(app_variant, common)
         self.common = common
-        self.machine.register_events(self)
+        self.common.register_class_callbacks(self)
         self.debug = False
         # Only allow a single window and track it on the app.
         self.window = None
@@ -147,7 +146,7 @@ class EduVpnGtkApplication(Gtk.Application):
 
         expired_deactivate()
 
-    @ui_transition(State.DISCONNECTED, StateType.ENTER)
+    @ui_transition(State.GOT_CONFIG, StateType.ENTER)
     def enter_NoActiveConnection(self, old_state, new_state):
         if not self.window.is_visible():
             # Quit the app if no window is open when the connection is deactivated.

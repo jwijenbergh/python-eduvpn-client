@@ -25,7 +25,7 @@ from gi.repository.Gtk import EventBox, SearchEntry, Switch  # type: ignore
 from eduvpn import __version__
 from eduvpn_common import __version__ as commonver
 from eduvpn.connection import Validity
-from eduvpn.event.state import State, StateType
+from eduvpn_common.state import State, StateType
 from eduvpn.i18n import retrieve_country_name
 from eduvpn.server import StatusImage, Server, SecureInternetServer
 from eduvpn.settings import FLAG_PREFIX, IMAGE_PREFIX
@@ -125,7 +125,6 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         self.eduvpn_app = application
         self.app = self.eduvpn_app.app  # type: ignore
         self.common = self.eduvpn_app.common
-        self.machine = self.eduvpn_app.machine
         handlers = {
             "on_info_delete": self.on_info_delete,
             "on_info_press_event": self.on_info_button,
@@ -321,7 +320,7 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         @run_in_background_thread("register")
         def register():
             try:
-                self.machine.register_events(self)
+                self.common.register_class_callbacks(self)
                 self.enter_deregistered()
                 self.app.model.register(debug=self.eduvpn_app.debug)
                 self.exit_deregistered()
@@ -675,7 +674,7 @@ For detailed information, see the log file located at:
         def update_results():
             # If we have left search server we should do nothing
             # We should find a better way to do this as this is pretty racy
-            if not self.app.model.is_search_server():
+            if not self.is_searching_server:
                 return
             self.on_search_changed()
 
@@ -878,7 +877,7 @@ For detailed information, see the log file located at:
     def exit_ConfiguringConnection(self, old_state: str, data) -> None:
         self.hide_loading_page()
 
-    @ui_transition(State.DISCONNECTED, StateType.ENTER)
+    @ui_transition(State.GOT_CONFIG, StateType.ENTER)
     def enter_ConnectionStatus(self, old_state: str, server_info):
         self.show_back_button(True)
         self.show_page(self.connection_page)
@@ -892,7 +891,7 @@ For detailed information, see the log file located at:
         self.renew_session_button.hide()
         self.connection_switch.set_sensitive(True)
 
-    @ui_transition(State.DISCONNECTED, StateType.LEAVE)
+    @ui_transition(State.GOT_CONFIG, StateType.LEAVE)
     def exit_ConnectionStatus(self, old_state, new_state):
         self.show_back_button(False)
         self.hide_page(self.connection_page)
@@ -1096,7 +1095,7 @@ For detailed information, see the log file located at:
             return
 
         # Not in the main screen
-        if not self.app.model.is_main() or self.is_searching_server:
+        if not self.common.in_state(State.MAIN) or self.is_searching_server:
             return
 
         # Not a right click
@@ -1183,7 +1182,7 @@ For detailed information, see the log file located at:
             self.connection_info_stats = None
 
     def start_connection_info(self):
-        if not self.app.model.is_connected():
+        if not self.common.in_state(State.CONNECTED):
             logger.info("Connection Info: VPN is not active")
             return
 
@@ -1287,7 +1286,7 @@ For detailed information, see the log file located at:
             return
 
         # If we are already connected we should ask if we want to reconnect
-        if self.app.model.is_connected():
+        if self.common.in_state(State.CONNECTED):
             # Asking for reconnect was not successful
             # Restore the previous profile
             if not self.profile_ask_reconnect():
