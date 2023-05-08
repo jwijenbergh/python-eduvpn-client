@@ -77,9 +77,24 @@ class ApplicationModelTransitions:
 
     @model_transition(State.ASK_LOCATION, StateType.ENTER)
     def ask_location(self, old_state: State, data):
-        cookie, locations = parse_required_transition(data, get=parse_locations)
-        set_location = lambda loc: self.common.cookie_reply(cookie, loc)
-        return (set_location, locations)
+        # If we get data we can thank eduvpn-common
+        if data:
+            cookie, locations = parse_required_transition(data, get=parse_locations)
+            set_location = lambda loc: self.common.cookie_reply(cookie, loc)
+            return (set_location, locations)
+
+        # If not we have a self transition
+        def choose_location(location: str):
+            try:
+                self.common.set_secure_location(location)
+            except Exception as e:
+                self.common.set_state(State.MAIN)
+                raise e
+            else:
+                self.common.set_state(State.MAIN)
+
+        return (choose_location, self.server_db.secure_internet.locations)
+
 
     @model_transition(State.AUTHORIZED, StateType.ENTER)
     def authorized(self, old_state: State, data: str):
@@ -240,24 +255,7 @@ class ApplicationModel:
         # get secure location server
         server = self.server_db.secure_internet
 
-        def choose_location(location: str):
-            try:
-                self.set_secure_location(location)
-            except Exception as e:
-                self.common.set_state(State.MAIN)
-                raise e
-            else:
-                self.common.set_state(State.MAIN)
-
-        if server is None:
-            logger.error("got no server when changing secure location")
-            return
-
-        # TODO: Figure this out
-        self.common.set_state(State.ASK_LOCATION, (choose_location, server.locations))
-
-    def set_secure_location(self, location_id: str):
-        self.common.set_secure_location(location_id)
+        self.common.set_state(State.ASK_LOCATION)
 
     def go_back(self):
         self.cancel()
