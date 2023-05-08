@@ -173,11 +173,11 @@ class ServerType(enum.IntEnum):
 def parse_secure_internet(si: dict) -> Optional[SecureInternetServer]:
     profiles = parse_profiles(si["profiles"])
     locations = si["locations"]
-    # TODO: support contact and delisted
+    # TODO: delisted
     return SecureInternetServer(
         si["identifier"],
         si["display_name"],
-        [],
+        si["support_contacts"],
         profiles,
         si["country_code"],
         locations,
@@ -192,7 +192,7 @@ def parse_current_server(server_json: str) -> Optional[Server]:
     if t == ServerType.INSTITUTE_ACCESS:
         i = d["institute_access_server"]
         profiles = parse_profiles(i["profiles"])
-        return InstituteServer(i["identifier"], i["display_name"], [], profiles)
+        return InstituteServer(i["identifier"], i["display_name"], i["support_contacts"], profiles)
     if t == ServerType.SECURE_INTERNET:
         si = d["secure_internet_server"]
         return parse_secure_internet(si)
