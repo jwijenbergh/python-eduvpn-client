@@ -252,7 +252,7 @@ class ApplicationModel:
                 callback(False)
                 return
         except WrappedError as e:
-            logger.debug(f"Failed to start failover, error: {e}")
+            logger.debug(f"Failed failover, error: {e}")
             callback(False)
             return
 
