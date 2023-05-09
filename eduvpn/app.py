@@ -520,7 +520,6 @@ class Application:
         def signal_handler(_signal, _frame):
             self.model.cancel()
             self.common.deregister()
-            sys.exit(1)
 
         signal.signal(signal.SIGINT, signal_handler)
 
