@@ -1018,7 +1018,6 @@ For detailed information, see the log file located at:
             self.connection_validity_thread_cancel = None
 
     def start_validity_expiry_notification(self, validity) -> None:
-        print("show expiry notification", validity.end)
         # If the time now is delta 5 seconds from expiry, disconnect
         d = datetime.now() - validity.end
         if abs(d.total_seconds()) <= 5:
