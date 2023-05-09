@@ -100,15 +100,13 @@ class EduVpnGtkApplication(Gtk.Application):
 
     def on_quit(self, action: None = None, _param: None = None) -> None:
         logger.debug("quit")
-        # Deregister the common library to save settings
         try:
-            def on_canceled(_):
-                self.common.deregister()
-                self.quit()  # type: ignore
-            self.app.model.cancel(on_canceled)
-        # Deregister is best effort
+            self.app.model.cancel()
+            # Deregister the common library to save settings
+            self.common.deregister()
+        # Cleaning up is best effort
         except Exception as e:
-            logger.debug("failed deregistering library", e)
+            logger.debug("failed cleaning up library", e)
 
     def on_window_closed(self) -> None:
         logger.debug("window closed")

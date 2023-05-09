@@ -11,6 +11,7 @@ from gettext import gettext as _
 from typing import Callable, Optional, Tuple, Type
 
 import gi
+import sys
 
 gi.require_version("Gtk", "3.0")  # noqa: E402
 gi.require_version("NM", "1.0")  # noqa: E402
@@ -359,6 +360,12 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
             _("Loading client"),
             _("The client is loading the servers."),
         )
+
+    @ui_transition(State.INITIAL, StateType.ENTER)
+    def enter_deregistered_transition(self, old_state: State, data: str):
+        logger.debug("deregistered transition")
+        self.close()
+        sys.exit(0)
 
     @run_in_glib_thread
     def exit_deregistered(self):
