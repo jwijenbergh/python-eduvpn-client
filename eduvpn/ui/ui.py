@@ -940,6 +940,7 @@ For detailed information, see the log file located at:
 
     @ui_transition(State.CONNECTED, StateType.LEAVE)
     def leave_ConnectedState(self, old_state, server_info):
+        logger.debug("leave connected state")
         if self.failover_text_cancel is not None:
             GLib.source_remove(self.failover_text_cancel)
         self.failover_text_timeout_shown = False
@@ -996,11 +997,13 @@ For detailed information, see the log file located at:
             return
 
     def start_validity_countdown_detailed(self, validity) -> None:
+        logger.debug("start validity countdown detailed")
         # Restart the timer with a more detailed interval
         self.stop_validity_countdown()
         self.start_validity_countdown(validity, detailed=True)
 
     def start_validity_countdown(self, validity, detailed: bool = False) -> None:
+        logger.debug("start validity countdown")
         interval = UPDATE_EXPIRY_INTERVAL
         if detailed:
             interval = UPDATE_EXPIRY_DETAILED_INTERVAL
@@ -1013,11 +1016,13 @@ For detailed information, see the log file located at:
         )
 
     def stop_validity_countdown(self) -> None:
+        logger.debug("stop validity countdown")
         if self.connection_validity_thread_cancel:
             self.connection_validity_thread_cancel()
             self.connection_validity_thread_cancel = None
 
     def start_validity_expiry_notification(self, validity) -> None:
+        logger.debug(f"show expiry notification: {validity.end}")
         # If the time now is delta 5 seconds from expiry, disconnect
         d = datetime.now() - validity.end
         if abs(d.total_seconds()) <= 5:
@@ -1025,6 +1030,7 @@ For detailed information, see the log file located at:
             self.eduvpn_app.enter_SessionExpiredState()
 
     def stop_validity_threads(self) -> None:
+        logger.debug("stop validity threads")
         if self.connection_validity_thread_cancel:
             self.connection_validity_thread_cancel()
             self.connection_validity_thread_cancel = None
@@ -1095,6 +1101,7 @@ For detailed information, see the log file located at:
             logger.debug(f"cancelled server remove for: {server!r}")
 
     def on_server_row_pressed(self, widget: TreeView, event: EventButton) -> None:
+        logger.debug("on server row pressed")
         # Exit if not a press
         if event.type != Gdk.EventType.BUTTON_PRESS:
             return
@@ -1136,6 +1143,8 @@ For detailed information, see the log file located at:
         self.call_model("cancel")
 
     def on_change_location(self, _):
+        logger.debug("on change location")
+
         self.call_model("change_secure_location")
 
     def on_search_changed(self, _: Optional[SearchEntry] = None) -> None:
@@ -1346,5 +1355,6 @@ For detailed information, see the log file located at:
         return True
 
     def on_reopen_window(self):
+        logger.debug("on reopen window")
         self.show()
         self.present()
