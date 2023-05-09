@@ -136,7 +136,6 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
             "on_server_row_activated": self.on_server_row_activated,
             "on_server_row_pressed": self.on_server_row_pressed,
             "on_search_changed": self.on_search_changed,
-            "on_search_activate": self.on_search_activate,
             "on_switch_connection_state": self.on_switch_connection_state,
             "on_toggle_connection_info": self.on_toggle_connection_info,
             "on_profile_row_activated": self.on_profile_row_activated,
@@ -1143,10 +1142,6 @@ For detailed information, see the log file located at:
             # as a custom server address.
             results = self.app.model.search_custom(query)
             search.update_results(self, results)
-
-    def on_search_activate(self, _=None):
-        logger.debug("activated server search")
-        # TODO
 
     def on_switch_connection_state(self, _switch: Switch, state: bool) -> bool:
         logger.debug("clicked on switch connection state")
