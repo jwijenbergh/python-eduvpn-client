@@ -432,7 +432,6 @@ class ApplicationModel:
 
             # Connect if we should and if we were previously connected
             if connect and was_connected:
-                self.common.set_state(State.CONNECTING)
                 self.activate_connection()
 
         # Deactivate connection if we are connected
