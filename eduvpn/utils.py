@@ -27,7 +27,7 @@ def get_ui_state(state: State) -> int:
     return len(State) + state
 
 
-ERROR_STATE = len(State)
+ERROR_STATE = 2*len(State)+1
 
 
 def model_transition(state: State, state_type: StateType) -> Callable:
