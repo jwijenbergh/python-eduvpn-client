@@ -34,7 +34,6 @@ class EduVpnGtkApplication(Gtk.Application):
         self.common = common
         self.common.register_class_callbacks(self)
         self.debug = False
-        # Only allow a single window and track it on the app.
         self.window = None
 
         self.add_main_option(  # type: ignore
@@ -68,12 +67,9 @@ class EduVpnGtkApplication(Gtk.Application):
 
     def do_activate(self) -> None:
         logger.debug("activate")
-        if not self.window:
-            self.window = EduVpnGtkWindow(application=self)  # type: ignore
-            self.window.present()  # type: ignore
-            self.window.initialize()  # type: ignore
-        else:
-            self.window.on_reopen_window()
+        self.window = EduVpnGtkWindow(application=self)  # type: ignore
+        self.window.present()  # type: ignore
+        self.window.initialize()  # type: ignore
 
     def do_command_line(self, command_line: ApplicationCommandLine) -> int:  # type: ignore
         logger.debug(f"command line: {command_line}")
@@ -143,10 +139,3 @@ class EduVpnGtkApplication(Gtk.Application):
             self.app.model.deactivate_connection()
 
         expired_deactivate()
-
-    @ui_transition(State.GOT_CONFIG, StateType.ENTER)
-    def enter_NoActiveConnection(self, old_state, new_state):
-        if not self.window.is_visible():
-            # Quit the app if no window is open when the connection is deactivated.
-            logger.debug("connection deactivated while window closed")
-            self.on_quit()
