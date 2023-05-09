@@ -401,7 +401,11 @@ class ApplicationModel:
     def renew_session(self, callback: Optional[Callable] = None):
         was_connected = self.common.in_state(State.CONNECTED)
 
-        def reconnect():
+        def reconnect(success: bool = True):
+            if not success:
+                if callback:
+                    callback(False)
+                return
             # Delete the OAuth access and refresh token
             # Start the OAuth authorization flow
             self.common.renew_session()
