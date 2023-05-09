@@ -53,6 +53,11 @@ class ApplicationModelTransitions:
         self.common.set_support_wireguard(has_wireguard)
         return self.server_db.configured
 
+    @model_transition(State.INITIAL, StateType.ENTER)
+    def deregistered(self, old_state: State, data: str):
+        logger.debug(f"Transition: INITIAL, old state: {old_state}")
+        return data
+
     @model_transition(State.CHOSEN_SERVER, StateType.ENTER)
     def chosen_server(self, old_state: State, data: str):
         logger.debug(f"Transition: CHOSEN_SERVER, old state: {old_state}")
