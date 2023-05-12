@@ -4,6 +4,7 @@ from typing import Tuple
 
 import gi
 
+from eduvpn_common.main import WrappedError
 from eduvpn.connection import Validity
 from eduvpn.utils import run_in_glib_thread
 
@@ -30,7 +31,9 @@ def style_widget(widget, class_name: str, style: str):
 
 
 def should_show_error(error: Exception):
-    return "context canceled" not in str(error)
+    if isinstance(error, WrappedError):
+        return not error.misc
+    return True
 
 
 def get_validity_text(validity: Validity, detailed: bool) -> Tuple[bool, str]:
