@@ -669,9 +669,9 @@ For detailed information, see the log file located at:
         self.connection_session_label.hide()
 
     @run_in_background_thread("update-search-async")
-    def update_search_async(self, update_disco: Callable):
+    def update_search_async(self):
         try:
-            update_disco()
+            self.app.model.server_db.disco_update()
         except Exception as e:
             self.show_error_revealer(str(e))
             return
@@ -699,7 +699,7 @@ For detailed information, see the log file located at:
         search.init_server_search(self)
 
         # asynchronously update the search results
-        # self.update_search_async(update_disco)
+        self.update_search_async()
 
     def exit_search(self):
         self.show_back_button(False)

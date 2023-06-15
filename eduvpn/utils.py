@@ -182,7 +182,7 @@ def run_in_glib_thread(func: Union[partial, Callable]) -> Callable:
 
     @wraps(func)
     def main_gtk_thread_func(*args, **kwargs):
-        GLib.idle_add(func, *args, **kwargs)
+        GLib.idle_add(partial(func, *args, **kwargs))
 
     return main_gtk_thread_func
 

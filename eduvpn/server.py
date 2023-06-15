@@ -278,12 +278,14 @@ class ServerDatabase:
     def disco(self):
         if not self.enable_discovery:
             return []
+        return self.cached
+
+    def disco_update(self):
         disco_orgs = parse_disco_organizations(self.wrapper.get_disco_organizations())
         disco_servers = parse_disco_servers(self.wrapper.get_disco_servers())
         all_servers = disco_orgs
         all_servers.extend(disco_servers)
         self.cached = all_servers
-        return all_servers
 
     def has(self, server) -> Optional[Server]:
         # The url attribute is always used as an identifier
