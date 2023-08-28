@@ -47,7 +47,6 @@ class ApplicationModelTransitions:
 
     @model_transition(State.MAIN, StateType.ENTER)
     def get_previous_servers(self, old_state: State, data):
-        print(self.server_db.configured)
         logger.debug(f"Transition: NO_SERVER, old state: {old_state}")
         # TODO: Why do we do this here?
         has_wireguard = nm.is_wireguard_supported()

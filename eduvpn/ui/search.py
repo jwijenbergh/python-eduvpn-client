@@ -47,7 +47,6 @@ def server_to_model_data(server) -> list:
         display_string = retrieve_country_name(server.country_code)
     return [display_string, server]
 
-@run_in_glib_thread
 def show_result_components(window: "EduVpnGtkWindow", show: bool) -> None:  # type: ignore  # noqa: E0602
     """
     Set the visibility of essential server list related components.
@@ -57,7 +56,6 @@ def show_result_components(window: "EduVpnGtkWindow", show: bool) -> None:  # ty
     show_ui_component(window.secure_internet_list, show)
     show_ui_component(window.other_server_list, show)
 
-@run_in_glib_thread
 def show_search_components(window: "EduVpnGtkWindow", show: bool) -> None:  # type: ignore  # noqa: E0602
     """
     Set the visibility of essential search related components.
@@ -68,7 +66,6 @@ def show_search_components(window: "EduVpnGtkWindow", show: bool) -> None:  # ty
     show_ui_component(window.find_server_search_input, show)
 
 
-@run_in_glib_thread
 def show_search_results(window: "EduVpnGtkWindow", show: bool) -> None:  # type: ignore  # noqa: E0602
     """
     Set the visibility of the tree of the search result component in the UI.
