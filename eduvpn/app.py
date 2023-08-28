@@ -401,6 +401,7 @@ class ApplicationModel:
     def renew_session(self, callback: Optional[Callable] = None):
         was_connected = self.common.in_state(State.CONNECTED)
 
+        @run_in_background_thread("reconnect")
         def reconnect(success: bool = True):
             if not success:
                 if callback:
@@ -409,6 +410,9 @@ class ApplicationModel:
             # Delete the OAuth access and refresh token
             # Start the OAuth authorization flow
             self.common.renew_session()
+            # TODO: should this be done in eduvpn-common?
+            if was_connected:
+                self.common.set_state(State.GOT_CONFIG)
             # Automatically reconnect to the server
             self.activate_connection(callback)
 
@@ -446,8 +450,12 @@ class ApplicationModel:
         self, callback: Optional[Callable] = None, prefer_tcp: bool = False
     ):
         if not self.common.in_state(State.GOT_CONFIG):
+            if callback:
+                callback(False)
             return
         if not self.current_server:
+            if callback:
+                callback(False)
             return
 
         def on_connected(success: bool):
