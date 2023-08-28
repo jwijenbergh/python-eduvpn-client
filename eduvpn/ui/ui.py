@@ -702,11 +702,11 @@ For detailed information, see the log file located at:
         self.update_search_async()
 
     def exit_search(self):
+        self.is_searching_server = False
         self.show_back_button(False)
         search.show_result_components(self, False)
         search.show_search_components(self, False)
         search.exit_server_search(self)
-        self.is_searching_server = False
 
     # TODO: Implement with Go callback
     def exit_ConfigureCustomServer(self, old_state, new_state):
