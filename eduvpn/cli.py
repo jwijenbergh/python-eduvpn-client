@@ -13,7 +13,7 @@ from eduvpn_common import __version__ as commonver
 from eduvpn import __version__
 from eduvpn.app import Application
 from eduvpn.connection import parse_expiry
-from eduvpn.event.machine import TRANSITIONS, State, StateMachine, StateType
+from eduvpn_common.state import State, StateType
 from eduvpn.i18n import retrieve_country_name
 from eduvpn.server import (
     InstituteServer,
@@ -46,12 +46,13 @@ def get_grouped_index(servers, index):
     return servers_added[index]
 
 
-def ask_profiles(app, profiles, current: Optional[Profile] = None) -> bool:
+def ask_profiles(app, data, current: Optional[Profile] = None) -> bool:
     # There is only a single profile
+    setter, profiles = data
     if len(profiles.profiles) == 1:
         _id, name = list(profiles.profiles.items())[0]
         print("There is only a single profile for this server:", name)
-        app.model.set_profile(_id)
+        setter(_id)
         return False
 
     # Multiple profiles, print the index
@@ -75,7 +76,7 @@ def ask_profiles(app, profiles, current: Optional[Profile] = None) -> bool:
                 continue
             chosen = choices[profile_index - 1]
             if current is None or chosen != current.identifier:
-                app.model.set_profile(choices[profile_index - 1])
+                setter(choices[profile_index-1])
                 return True
             print("Selected profile is the same as the current profile")
             return False
@@ -114,13 +115,12 @@ class CommandLine:
         self.name = name
         self.variant = variant
         self.common = common
-        self.machine = StateMachine(TRANSITIONS)
-        self.app = Application(variant, common, self.machine)
+        self.app = Application(variant, common)
         self.nm_manager = self.app.nm_manager
         self.server_db = ServerDatabase(common, variant.use_predefined_servers)
         self.transitions = CommandLineTransitions(self.app)
         self.skip_yes = False
-        self.machine.register_events(self.transitions)
+        self.common.register_class_callbacks(self.transitions)
 
     def ask_yes(self, label) -> bool:
         if self.skip_yes:
@@ -185,7 +185,7 @@ class CommandLine:
 
     def start_failover(self, callback: Callable):
         if not self.app.model.should_failover():
-            callback()
+            callback(False)
             return
 
         def on_reconnected(dropped):
@@ -197,25 +197,28 @@ class CommandLine:
                 print(
                     "Done testing, you are connected. If you experience any connectivity issues, you can disconnect and try again with the --tcp flag"
                 )
-            callback()
+            callback(dropped)
 
         print("Connected, but we are testing your VPN if it can reach the internet...")
         self.app.model.start_failover(on_reconnected)
 
     def connect_server(self, server, prefer_tcp: bool):
         def connect(callback=None):
+            def connect_cb(success: bool=False):
+                if success:
+                    self.start_failover(callback)
+                else:
+                    callback()
             @run_in_background_thread("connect")
             def connect_background(server):
                 try:
                     # Connect to the server and ensure it exists
-                    has_server = not self.server_db.has(server)
-                    if has_server is None:
+                    not_exists = self.server_db.has(server) is None
+                    if not_exists:
                         self.app.model.add(server)
-                        # The server should now have been added
-                        server = not self.server_db.has(server)
                     self.app.model.connect(
                         server,
-                        partial(self.start_failover, callback),
+                        connect_cb,
                         prefer_tcp=prefer_tcp,
                     )
                 except Exception as e:
@@ -291,7 +294,7 @@ class CommandLine:
         return server
 
     def status(self, _args={}):
-        if not self.app.model.is_connected():
+        if not self.common.in_state(State.CONNECTED):
             print("You are currently not connected to a server", file=sys.stderr)
             return False
 
@@ -310,7 +313,7 @@ class CommandLine:
         print(f"VPN Protocol: {self.nm_manager.protocol}")
 
     def connect(self, variables={}):
-        if self.app.model.is_connected():
+        if self.common.in_state(State.CONNECTED):
             print(
                 "You are already connected to a server, please disconnect first",
                 file=sys.stderr,
@@ -327,7 +330,7 @@ class CommandLine:
         return self.connect_server(server, prefer_tcp)
 
     def disconnect(self, _arg={}):
-        if not self.app.model.is_connected():
+        if not self.common.in_state(State.CONNECTED):
             print("You are not connected to a server", file=sys.stderr)
             return False
 
@@ -385,7 +388,7 @@ class CommandLine:
         self.app.model.remove(server)
 
     def change_profile(self, args={}):
-        if not self.app.model.is_connected():
+        if not self.common.in_state(State.CONNECTED):
             print(
                 "Please connect to a server first before changing profiles",
                 file=sys.stderr,
@@ -394,10 +397,12 @@ class CommandLine:
 
         server = self.app.model.current_server
 
+        setter = self.app.model.set_profile
         print("Current profile:", server.profiles.current)
 
         # Return if profiles stayed the same
-        if not ask_profiles(self.app, server.profiles, server.profiles.current):
+        data = (setter, server.profiles)
+        if not ask_profiles(self.app, data, server.profiles.current):
             return
 
         @run_in_background_thread("change-profile-reconnect")
@@ -417,7 +422,7 @@ class CommandLine:
         nm.action_with_mainloop(reconnect)
 
     def change_location(self, args={}):
-        if not self.app.model.is_connected():
+        if not self.common.in_state(State.CONNECTED):
             print(
                 "Please connect to a Secure Internet server first before changing locations",
                 file=sys.stderr,
@@ -454,15 +459,18 @@ class CommandLine:
         nm.action_with_mainloop(reconnect)
 
     def renew(self, args={}):
-        if not self.app.model.is_connected():
+        if not self.common.in_state(State.CONNECTED):
             print("Please connect to a server first before renewing", file=sys.stderr)
             return False
 
         def renew(callback):
+            def renew_cb(success: bool = False):
+                callback()
+
             @run_in_background_thread("renew")
             def renew_background():
                 try:
-                    self.app.model.renew_session(callback)
+                    self.app.model.renew_session(renew_cb)
                 except Exception as e:
                     if should_show_error(e):
                         print("An error occurred while trying to renew")
@@ -476,7 +484,7 @@ class CommandLine:
         nm.action_with_mainloop(renew)
 
     def remove(self, args={}):
-        if self.app.model.is_connected():
+        if self.common.in_state(State.CONNECTED):
             print(
                 "Please disconnect from your server before doing any changes",
                 file=sys.stderr,
