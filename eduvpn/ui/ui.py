@@ -901,7 +901,6 @@ For detailed information, see the log file located at:
     def exit_ConnectionStatus(self, old_state, new_state):
         self.show_back_button(False)
         self.hide_page(self.connection_page)
-        self.pause_connection_info()
 
     @run_in_glib_thread
     def update_failover_text(self, dropped):
@@ -964,9 +963,7 @@ For detailed information, see the log file located at:
         self.connection_info_expander.show()
         self.show_page(self.connection_page)
         self.show_back_button(False)
-        is_expanded = self.connection_info_expander.get_expanded()
-        if is_expanded:
-            self.start_connection_info()
+        self.start_connection_info()
         self.update_connection_status(True)
         self.update_connection_server(server_info)
         self.start_validity_countdown(validity)
@@ -1231,12 +1228,6 @@ For detailed information, see the log file located at:
 
     def on_toggle_connection_info(self, _):
         logger.debug("clicked on connection info")
-        was_expanded = self.connection_info_expander.get_expanded()
-
-        if not was_expanded:
-            self.start_connection_info()
-        else:
-            self.pause_connection_info()
 
     def on_profile_row_activated(
         self, widget: TreeView, row: TreePath, _col: TreeViewColumn
