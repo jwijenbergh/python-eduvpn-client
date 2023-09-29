@@ -7,30 +7,18 @@ import webbrowser
 from typing import Any, Callable, Iterator, List, Optional, TextIO, Tuple
 
 from eduvpn_common.main import EduVPN, WrappedError
+from eduvpn_common.state import State, StateType
 from eduvpn_common.types import ReadRxBytes
 
 from eduvpn import nm
 from eduvpn.config import Configuration
-from eduvpn.connection import (
-    Config,
-    Connection,
-    Token,
-    parse_config,
-    parse_tokens,
-    parse_expiry,
-)
-from eduvpn_common.state import State, StateType
+from eduvpn.connection import (Config, Connection, Token, parse_config,
+                               parse_expiry, parse_tokens)
 from eduvpn.keyring import DBusKeyring, InsecureFileKeyring, TokenKeyring
-from eduvpn.server import (
-    SecureInternetServer,
-    ServerDatabase,
-    parse_current_server,
-    parse_locations,
-    parse_profiles,
-    parse_required_transition,
-    parse_secure_internet,
-    Server,
-)
+from eduvpn.server import (SecureInternetServer, Server, ServerDatabase,
+                           parse_current_server, parse_locations,
+                           parse_profiles, parse_required_transition,
+                           parse_secure_internet)
 from eduvpn.utils import model_transition, run_in_background_thread
 from eduvpn.variants import ApplicationVariant
 
@@ -38,9 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 class ApplicationModelTransitions:
-    def __init__(
-        self, common: EduVPN, variant: ApplicationVariant
-    ) -> None:
+    def __init__(self, common: EduVPN, variant: ApplicationVariant) -> None:
         self.common = common
         self.common.register_class_callbacks(self)
         self.server_db = ServerDatabase(common, variant.use_predefined_servers)
@@ -99,7 +85,6 @@ class ApplicationModelTransitions:
                 self.common.set_state(State.MAIN)
 
         return (choose_location, self.server_db.secure_internet.locations)
-
 
     @model_transition(State.AUTHORIZED, StateType.ENTER)
     def authorized(self, old_state: State, data: str):
@@ -464,7 +449,6 @@ class ApplicationModel:
 
         self.connect(self.current_server, on_connected, prefer_tcp=prefer_tcp)
 
-
     @run_in_background_thread("cleanup")
     def cleanup(self):
         # We retry this cleanup 2 times
@@ -504,6 +488,7 @@ class ApplicationModel:
                 self.common.set_state(State.CONNECTED)
                 if callback:
                     callback(False)
+
         self.disconnect(on_disconnected)
 
     def search_predefined(self, query: str) -> Iterator[Any]:
@@ -512,18 +497,15 @@ class ApplicationModel:
     def search_custom(self, query: str) -> Iterator[Any]:
         return self.server_db.search_custom(query)
 
+
 class Application:
-    def __init__(
-        self, variant: ApplicationVariant, common: EduVPN
-    ) -> None:
+    def __init__(self, variant: ApplicationVariant, common: EduVPN) -> None:
         self.variant = variant
         self.nm_manager = nm.NMManager(variant)
         self.common = common
         directory = variant.config_prefix
         self.config = Configuration.load(directory)
-        self.model = ApplicationModel(
-            common, self.config, variant, self.nm_manager
-        )
+        self.model = ApplicationModel(common, self.config, variant, self.nm_manager)
 
         def signal_handler(_signal, _frame):
             self.model.cancel()

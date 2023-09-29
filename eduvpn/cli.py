@@ -7,28 +7,18 @@ from functools import partial
 from typing import Callable, Optional
 
 import eduvpn_common.main as common
+from eduvpn_common import __version__ as commonver
+from eduvpn_common.state import State, StateType
 
 import eduvpn.nm as nm
-from eduvpn_common import __version__ as commonver
 from eduvpn import __version__
 from eduvpn.app import Application
 from eduvpn.connection import parse_expiry
-from eduvpn_common.state import State, StateType
 from eduvpn.i18n import retrieve_country_name
-from eduvpn.server import (
-    InstituteServer,
-    Profile,
-    SecureInternetServer,
-    Server,
-    ServerDatabase,
-)
-from eduvpn.settings import (
-    CLIENT_ID,
-    CONFIG_DIR_MODE,
-    CONFIG_PREFIX,
-    LETSCONNECT_CLIENT_ID,
-    LETSCONNECT_CONFIG_PREFIX,
-)
+from eduvpn.server import (InstituteServer, Profile, SecureInternetServer,
+                           Server, ServerDatabase)
+from eduvpn.settings import (CLIENT_ID, CONFIG_DIR_MODE, CONFIG_PREFIX,
+                             LETSCONNECT_CLIENT_ID, LETSCONNECT_CONFIG_PREFIX)
 from eduvpn.ui.search import ServerGroup, group_servers
 from eduvpn.ui.utils import get_validity_text, should_show_error
 from eduvpn.utils import cmd_transition, init_logger, run_in_background_thread
@@ -76,7 +66,7 @@ def ask_profiles(app, data, current: Optional[Profile] = None) -> bool:
                 continue
             chosen = choices[profile_index - 1]
             if current is None or chosen != current.identifier:
-                setter(choices[profile_index-1])
+                setter(choices[profile_index - 1])
                 return True
             print("Selected profile is the same as the current profile")
             return False
@@ -204,11 +194,12 @@ class CommandLine:
 
     def connect_server(self, server, prefer_tcp: bool):
         def connect(callback=None):
-            def connect_cb(success: bool=False):
+            def connect_cb(success: bool = False):
                 if success:
                     self.start_failover(callback)
                 else:
                     callback()
+
             @run_in_background_thread("connect")
             def connect_background(server):
                 try:

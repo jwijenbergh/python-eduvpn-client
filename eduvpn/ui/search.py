@@ -1,15 +1,14 @@
 import enum
-from functools import lru_cache
+from functools import lru_cache, partial
 from typing import Dict, List
 
 from gi.overrides.Gtk import ListStore  # type: ignore
 
-from functools import partial
 from eduvpn.discovery import DiscoOrganization, DiscoServer
 from eduvpn.i18n import retrieve_country_name
 from eduvpn.server import InstituteServer, SecureInternetServer, Server
-from eduvpn.utils import run_in_background_thread, run_in_glib_thread
 from eduvpn.ui.utils import show_ui_component
+from eduvpn.utils import run_in_background_thread, run_in_glib_thread
 
 
 class ServerGroup(enum.Enum):
@@ -36,16 +35,19 @@ group_header_component = {
     ServerGroup.OTHER: "other_server_list_header",
 }
 
+
 def new_group_model() -> ListStore:
     from gi.repository import GObject, Gtk
 
     return Gtk.ListStore(GObject.TYPE_STRING, GObject.TYPE_PYOBJECT)  # type: ignore
+
 
 def server_to_model_data(server) -> list:
     display_string = str(server)
     if isinstance(server, SecureInternetServer):
         display_string = retrieve_country_name(server.country_code)
     return [display_string, server]
+
 
 def show_result_components(window: "EduVpnGtkWindow", show: bool) -> None:  # type: ignore  # noqa: E0602
     """
@@ -55,6 +57,7 @@ def show_result_components(window: "EduVpnGtkWindow", show: bool) -> None:  # ty
     show_ui_component(window.institute_list, show)
     show_ui_component(window.secure_internet_list, show)
     show_ui_component(window.other_server_list, show)
+
 
 def show_search_components(window: "EduVpnGtkWindow", show: bool) -> None:  # type: ignore  # noqa: E0602
     """
@@ -97,6 +100,7 @@ def group_servers(servers):
             continue
     return groups
 
+
 def show_group_tree(window: "EduVpnGtkWindow", group: ServerGroup, show: bool) -> None:  # type: ignore  # noqa: E0602
     """
     Set the visibility of the tree of result for a server type.
@@ -110,6 +114,7 @@ def show_group_tree(window: "EduVpnGtkWindow", group: ServerGroup, show: bool) -
     header_component_name = group_header_component[group]
     header_component = getattr(window, header_component_name)
     show_ui_component(header_component, show)
+
 
 def init_server_search(window: "EduVpnGtkWindow") -> None:  # type: ignore  # noqa: E0602
     "Initialize the search page components."
@@ -127,7 +132,8 @@ def init_server_search(window: "EduVpnGtkWindow") -> None:  # type: ignore  # no
             column = Gtk.TreeViewColumn("", text_cell, text=0)  # type: ignore
             tree_view.append_column(column)
 
-@run_in_background_thread('search-exit')
+
+@run_in_background_thread("search-exit")
 def exit_server_search(window: "EduVpnGtkWindow") -> None:  # type: ignore  # noqa: E0602
     "Hide the search page components."
     for group in group_scroll_component:
@@ -144,7 +150,7 @@ def update_search_results_for_type(
     """
     from gi.repository import Gtk, Pango
 
-    @run_in_background_thread('search-convert-model')
+    @run_in_background_thread("search-convert-model")
     def convert(servers, callback):
         model = new_group_model()  # type: ignore
         # Remove the old search results.

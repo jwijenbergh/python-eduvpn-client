@@ -9,9 +9,8 @@ from os import environ, path
 from sys import prefix
 from typing import Callable, Optional, Union
 
-from eduvpn_common.main import WrappedError
-
 from eduvpn_common.event import class_state_transition
+from eduvpn_common.main import WrappedError
 from eduvpn_common.state import State, StateType
 
 logger = logging.getLogger(__file__)
@@ -27,7 +26,7 @@ def get_ui_state(state: State) -> int:
     return len(State) + state
 
 
-ERROR_STATE = 2*len(State)+1
+ERROR_STATE = 2 * len(State) + 1
 
 
 def model_transition(state: State, state_type: StateType) -> Callable:
@@ -51,13 +50,9 @@ def model_transition(state: State, state_type: StateType) -> Callable:
             ui_state = get_ui_state(state)
             # We can then pass it to the UI
             if state_type == StateType.ENTER:
-                self.common.event_handler.run(
-                    other_ui_state, ui_state, model_converted
-                )
+                self.common.event_handler.run(other_ui_state, ui_state, model_converted)
             else:
-                self.common.event_handler.run(
-                    ui_state, other_ui_state, model_converted
-                )
+                self.common.event_handler.run(ui_state, other_ui_state, model_converted)
 
         # Add the inner function on the state transition
         class_state_transition(state, state_type)(inner)

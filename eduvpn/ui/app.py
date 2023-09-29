@@ -5,12 +5,12 @@ import gi
 
 gi.require_version("Gtk", "3.0")  # noqa: E402
 from eduvpn_common.main import EduVPN
+from eduvpn_common.state import State, StateType
 from gi.repository import Gio, GLib, Gtk
 from gi.repository.Gio import ApplicationCommandLine
 
 from eduvpn import i18n, notify
 from eduvpn.app import Application
-from eduvpn_common.state import State, StateType
 from eduvpn.settings import CONFIG_DIR_MODE
 from eduvpn.ui.ui import EduVpnGtkWindow
 from eduvpn.utils import init_logger, run_in_background_thread, ui_transition
@@ -83,8 +83,9 @@ class EduVpnGtkApplication(Gtk.Application):
         options = options.end().unpack()
 
         if "version" in options:  # type: ignore
-            from eduvpn import __version__
             from eduvpn_common import __version__ as commonver
+
+            from eduvpn import __version__
 
             print(
                 f"{self.app.variant.name} GUI version: {__version__} with eduvpn-common version: {commonver}"

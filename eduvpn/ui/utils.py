@@ -3,8 +3,8 @@ from gettext import ngettext
 from typing import Tuple
 
 import gi
-
 from eduvpn_common.main import WrappedError
+
 from eduvpn.connection import Validity
 from eduvpn.utils import run_in_glib_thread
 

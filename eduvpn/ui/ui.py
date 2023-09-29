@@ -5,18 +5,20 @@
 
 import logging
 import os
+import sys
 import threading
 from functools import partial
 from gettext import gettext as _
 from typing import Callable, Optional, Tuple, Type
 
 import gi
-import sys
 
 gi.require_version("Gtk", "3.0")  # noqa: E402
 gi.require_version("NM", "1.0")  # noqa: E402
 from datetime import datetime
 
+from eduvpn_common import __version__ as commonver
+from eduvpn_common.state import State, StateType
 from gi.overrides.Gdk import Event, EventButton  # type: ignore
 from gi.overrides.Gtk import TreePath  # type: ignore
 from gi.overrides.Gtk import Box, Builder, Button, TreeView, TreeViewColumn
@@ -24,33 +26,18 @@ from gi.repository import Gdk, GdkPixbuf, GLib, GObject, Gtk
 from gi.repository.Gtk import EventBox, SearchEntry, Switch  # type: ignore
 
 from eduvpn import __version__
-from eduvpn_common import __version__ as commonver
 from eduvpn.connection import Validity
-from eduvpn_common.state import State, StateType
 from eduvpn.i18n import retrieve_country_name
-from eduvpn.server import StatusImage, Server, SecureInternetServer
+from eduvpn.server import SecureInternetServer, Server, StatusImage
 from eduvpn.settings import FLAG_PREFIX, IMAGE_PREFIX
 from eduvpn.ui import search
 from eduvpn.ui.stats import NetworkStats
-from eduvpn.ui.utils import (
-    QUIT_ID,
-    get_validity_text,
-    link_markup,
-    should_show_error,
-    show_error_dialog,
-    show_ui_component,
-    style_widget,
-)
-from eduvpn.utils import (
-    ERROR_STATE,
-    get_prefix,
-    get_ui_state,
-    log_exception,
-    run_in_background_thread,
-    run_in_glib_thread,
-    run_periodically,
-    ui_transition,
-)
+from eduvpn.ui.utils import (QUIT_ID, get_validity_text, link_markup,
+                             should_show_error, show_error_dialog,
+                             show_ui_component, style_widget)
+from eduvpn.utils import (ERROR_STATE, get_prefix, get_ui_state, log_exception,
+                          run_in_background_thread, run_in_glib_thread,
+                          run_periodically, ui_transition)
 
 logger = logging.getLogger(__name__)
 
@@ -1160,6 +1147,7 @@ For detailed information, see the log file located at:
 
         if state is not self.connection_switch_state:
             self.connection_switch_state = state
+
             # Cancel everything if something was in progress
             # We return if something from NM was canceled
             def on_canceled():

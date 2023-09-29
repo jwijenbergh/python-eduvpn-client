@@ -1,6 +1,7 @@
 import enum
 import ipaddress
 import logging
+import sys
 import time
 import uuid
 from configparser import ConfigParser
@@ -13,9 +14,8 @@ from tempfile import mkdtemp
 from typing import Any, Callable, Optional, TextIO, Tuple
 
 import gi
-import sys
-
 from eduvpn_common.main import Jar
+
 from eduvpn.ovpn import Ovpn
 from eduvpn.storage import get_uuid, set_uuid, write_ovpn
 from eduvpn.utils import run_in_glib_thread
@@ -388,11 +388,13 @@ class NMManager:
         )
         new_connection = self.set_setting_ensure_permissions(new_connection)
         if self.existing_connection:
+
             def deleted(success: bool):
                 if success:
                     self.add_connection(new_connection, callback)
                 else:
                     callback(False)
+
             self.delete_connection(deleted)
         else:
             self.add_connection(new_connection, callback)
@@ -604,9 +606,9 @@ class NMManager:
 
                     # This happens if the connection cancellable is called
                     if (
-                            ConnectionState.from_active_state(state)
-                            == ConnectionState.DISCONNECTED
-                            ):
+                        ConnectionState.from_active_state(state)
+                        == ConnectionState.DISCONNECTED
+                    ):
                         if c:
                             self.delete_cancellable(c)
                         if signal:
@@ -618,7 +620,10 @@ class NMManager:
 
         c = self.new_connect_cancellable()
         self.client.activate_connection_async(
-            connection=con, callback=activate_connection_callback, cancellable=c, user_data=(c, callback)
+            connection=con,
+            callback=activate_connection_callback,
+            cancellable=c,
+            user_data=(c, callback),
         )
 
     def deactivate_connection(self, callback: Optional[Callable] = None) -> None:
@@ -657,6 +662,7 @@ class NMManager:
                         callback(False)
                 else:
                     _logger.debug(f"deactivate_connection_async result: {result}")
+
                     def on_deleted(success: bool):
                         if callback:
                             # Whether or not deletion was a success, we return true
@@ -669,7 +675,10 @@ class NMManager:
 
             c = self.new_cancellable()
             self.client.deactivate_connection_async(
-                active=con, callback=on_deactivate_connection, cancellable=c, user_data=(c, callback)
+                active=con,
+                callback=on_deactivate_connection,
+                cancellable=c,
+                user_data=(c, callback),
             )
         else:
             _logger.debug("No active connection to deactivate")
@@ -741,10 +750,12 @@ class NMManager:
                     callback(False)
             else:
                 _logger.debug(f"disconnect_async result: {result}")
+
                 def on_deleted(success: bool):
                     # even if it cannot be deleted, the deactive is still successful
                     if callback:
                         callback(result)
+
                 self.delete_connection(on_deleted)
             finally:
                 if c:
@@ -756,7 +767,9 @@ class NMManager:
             _logger.warning("Cannot disconnect, no WireGuard device")
             return
         c = self.new_cancellable()
-        device.disconnect_async(callback=on_disconnect, cancellable=c, user_data=(c, callback))
+        device.disconnect_async(
+            callback=on_disconnect, cancellable=c, user_data=(c, callback)
+        )
 
     def subscribe_to_status_changes(
         self,
@@ -830,9 +843,7 @@ def action_with_mainloop(action: Callable):
     main_loop.run()
 
 
-def add_connection_callback(
-    client: NM.Client, result: Task, user_data
-) -> None:
+def add_connection_callback(client: NM.Client, result: Task, user_data) -> None:
     object, c, callback = user_data
     try:
         new_con = client.add_connection_finish(result)

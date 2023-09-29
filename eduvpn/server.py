@@ -1,12 +1,13 @@
 import enum
 import json
 import logging
-from typing import Any, Callable, Dict, Iterable, List, Optional, Union, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
+
+from eduvpn_common.main import ServerType
 
 from eduvpn.discovery import parse_disco_organizations, parse_disco_servers
 from eduvpn.i18n import extract_translation
 from eduvpn.settings import IMAGE_PREFIX
-from eduvpn_common.main import ServerType
 
 logger = logging.getLogger(__name__)
 TranslatedStr = Union[str, Dict[str, str]]
@@ -192,7 +193,9 @@ def parse_current_server(server_json: str) -> Optional[Server]:
     if t == ServerType.INSTITUTE_ACCESS:
         i = d["institute_access_server"]
         profiles = parse_profiles(i["profiles"])
-        return InstituteServer(i["identifier"], i["display_name"], i["support_contacts"], profiles)
+        return InstituteServer(
+            i["identifier"], i["display_name"], i["support_contacts"], profiles
+        )
     if t == ServerType.SECURE_INTERNET:
         si = d["secure_internet_server"]
         return parse_secure_internet(si)
