@@ -1,5 +1,4 @@
 import enum
-from functools import lru_cache, partial
 from typing import Dict, List
 
 from gi.overrides.Gtk import ListStore  # type: ignore
@@ -148,7 +147,7 @@ def update_search_results_for_type(
     Update the UI with the search results
     for a single type of server.
     """
-    from gi.repository import Gtk, Pango
+    from gi.repository import Gtk
 
     @run_in_background_thread("search-convert-model")
     def convert(servers, callback):

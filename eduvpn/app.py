@@ -2,9 +2,8 @@ import json
 import logging
 import os
 import signal
-import sys
 import webbrowser
-from typing import Any, Callable, Iterator, List, Optional, TextIO, Tuple
+from typing import Any, Callable, Iterator, Optional, TextIO
 
 from eduvpn_common.main import EduVPN, WrappedError
 from eduvpn_common.state import State, StateType
@@ -12,13 +11,11 @@ from eduvpn_common.types import ReadRxBytes
 
 from eduvpn import nm
 from eduvpn.config import Configuration
-from eduvpn.connection import (Config, Connection, Token, parse_config,
-                               parse_expiry, parse_tokens)
+from eduvpn.connection import (Config, Connection, parse_config, parse_expiry,
+                               parse_tokens)
 from eduvpn.keyring import DBusKeyring, InsecureFileKeyring, TokenKeyring
-from eduvpn.server import (SecureInternetServer, Server, ServerDatabase,
-                           parse_current_server, parse_locations,
-                           parse_profiles, parse_required_transition,
-                           parse_secure_internet)
+from eduvpn.server import (ServerDatabase, parse_current_server, parse_locations,
+                           parse_profiles, parse_required_transition)
 from eduvpn.utils import model_transition, run_in_background_thread
 from eduvpn.variants import ApplicationVariant
 

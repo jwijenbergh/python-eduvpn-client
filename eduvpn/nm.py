@@ -5,7 +5,6 @@ import sys
 import time
 import uuid
 from configparser import ConfigParser
-from functools import lru_cache
 from ipaddress import ip_address, ip_interface
 from pathlib import Path
 from shutil import rmtree

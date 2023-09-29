@@ -2,7 +2,7 @@ import json
 from configparser import ConfigParser
 from datetime import datetime, timedelta
 from enum import IntEnum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from eduvpn.ovpn import Ovpn
 
