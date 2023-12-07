@@ -348,7 +348,7 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
             _("The client is loading the servers."),
         )
 
-    @ui_transition(State.INITIAL, StateType.ENTER)
+    @ui_transition(State.DEREGISTERED, StateType.ENTER)
     def enter_deregistered_transition(self, old_state: State, data: str):
         logger.debug("deregistered transition")
         self.close()
@@ -682,6 +682,7 @@ For detailed information, see the log file located at:
         self.find_server_search_input.grab_focus()
         search.show_result_components(self, True)
         search.show_search_components(self, True)
+        print(self.app.model.server_db.disco)
         search.update_results(self, self.app.model.server_db.disco)
         search.init_server_search(self)
 
@@ -717,7 +718,7 @@ For detailed information, see the log file located at:
             [
                 not self.app.model.keyring.secure,
                 not self.app.config.ignore_keyring_warning,
-                old_state == get_ui_state(State.INITIAL),
+                old_state == get_ui_state(State.DEREGISTERED),
             ]
         ):
             self.keyring_dialog.show()
@@ -746,37 +747,26 @@ For detailed information, see the log file located at:
         self.hide_page(self.oauth_page)
         self.oauth_cancel_button.hide()
 
-    @ui_transition(State.AUTHORIZED, StateType.ENTER)
-    def enter_OAuthRefreshToken(self, new_state, data):
-        self.show_loading_page(
-            _("Sucessfully authorized"),
-            _("You have sucessfully authorized the eduVPN Linux client."),
-        )
-
-    @ui_transition(State.AUTHORIZED, StateType.LEAVE)
-    def exit_OAuthRefreshToken(self, old_state, data):
-        self.hide_loading_page()
-
-    @ui_transition(State.CHOSEN_SERVER, StateType.ENTER)
+    @ui_transition(State.ADDING_SERVER, StateType.ENTER)
     def enter_chosenServerInformation(self, new_state, data):
         self.show_loading_page(
-            _("Server chosen"),
-            _("The server has been chosen and is loading."),
+            _("Adding server"),
+            _("Loading server information..."),
         )
 
-    @ui_transition(State.CHOSEN_SERVER, StateType.LEAVE)
+    @ui_transition(State.ADDING_SERVER, StateType.LEAVE)
     def exit_chosenServerInformation(self, old_state, data):
         self.hide_loading_page()
 
-    @ui_transition(State.LOADING_SERVER, StateType.ENTER)
-    def enter_LoadingServerInformation(self, new_state, data):
+    @ui_transition(State.GETTING_CONFIG, StateType.ENTER)
+    def enter_chosenServerInformation(self, new_state, data):
         self.show_loading_page(
-            _("Loading"),
-            _("The server details are being loaded."),
+            _("Getting a VPN configuration"),
+            _("Loading server information..."),
         )
 
-    @ui_transition(State.LOADING_SERVER, StateType.LEAVE)
-    def exit_LoadingServerInformation(self, old_state, data):
+    @ui_transition(State.GETTING_CONFIG, StateType.LEAVE)
+    def exit_chosenServerInformation(self, old_state, data):
         self.hide_loading_page()
 
     @ui_transition(State.ASK_PROFILE, StateType.ENTER)
@@ -861,16 +851,18 @@ For detailed information, see the log file located at:
         self.hide_page(self.choose_location_page)
         self.location_list.hide()
 
-    def enter_ConfiguringConnection(self) -> None:
+    @ui_transition(State.GOT_CONFIG, StateType.ENTER)
+    def enter_GotConfig(self, old_state: str, data) -> None:
         self.show_loading_page(
             _("Configuring"),
             _("Your connection is being configured."),
         )
 
-    def exit_ConfiguringConnection(self, old_state: str, data) -> None:
+    @ui_transition(State.GOT_CONFIG, StateType.LEAVE)
+    def exit_GotConfig(self, old_state: str, data) -> None:
         self.hide_loading_page()
 
-    @ui_transition(State.GOT_CONFIG, StateType.ENTER)
+    @ui_transition(State.DISCONNECTED, StateType.ENTER)
     def enter_ConnectionStatus(self, old_state: str, server_info):
         self.show_back_button(True)
         self.show_page(self.connection_page)
@@ -884,7 +876,7 @@ For detailed information, see the log file located at:
         self.renew_session_button.hide()
         self.connection_switch.set_sensitive(True)
 
-    @ui_transition(State.GOT_CONFIG, StateType.LEAVE)
+    @ui_transition(State.DISCONNECTED, StateType.LEAVE)
     def exit_ConnectionStatus(self, old_state, new_state):
         self.show_back_button(False)
         self.hide_page(self.connection_page)
@@ -1234,8 +1226,6 @@ For detailed information, see the log file located at:
                 log_exception(e)
 
         set_profile()
-
-        self.show_loading_page("Loading profile", "The profile has been selected")
 
     def profile_ask_reconnect(self) -> bool:
         gtk_reconnect_id = -10

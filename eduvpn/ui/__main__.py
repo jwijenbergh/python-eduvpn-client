@@ -53,4 +53,5 @@ def letsconnect(args=None):
 
 
 if __name__ == "__main__":
+    print("HIER")
     eduvpn()

@@ -30,26 +30,31 @@ class ApplicationModelTransitions:
 
     @model_transition(State.MAIN, StateType.ENTER)
     def get_previous_servers(self, old_state: State, data):
-        logger.debug(f"Transition: NO_SERVER, old state: {old_state}")
+        logger.debug(f"Transition: MAIN, old state: {old_state}")
         # TODO: Why do we do this here?
         has_wireguard = nm.is_wireguard_supported()
         self.common.set_support_wireguard(has_wireguard)
         return self.server_db.configured
 
-    @model_transition(State.INITIAL, StateType.ENTER)
+    @model_transition(State.DEREGISTERED, StateType.ENTER)
     def deregistered(self, old_state: State, data: str):
-        logger.debug(f"Transition: INITIAL, old state: {old_state}")
+        logger.debug(f"Transition: DEREGISTERED, old state: {old_state}")
         return data
 
-    @model_transition(State.CHOSEN_SERVER, StateType.ENTER)
-    def chosen_server(self, old_state: State, data: str):
-        logger.debug(f"Transition: CHOSEN_SERVER, old state: {old_state}")
-        return data
-
-    @model_transition(State.LOADING_SERVER, StateType.ENTER)
+    @model_transition(State.ADDING_SERVER, StateType.ENTER)
     def loading_server(self, old_state: State, data: str):
-        logger.debug(f"Transition: LOADING_SERVER, old state: {old_state}")
+        logger.debug(f"Transition: ADDING_SERVER, old state: {old_state}")
         return data
+
+    @model_transition(State.GETTING_CONFIG, StateType.ENTER)
+    def loading_server(self, old_state: State, data: str):
+        logger.debug(f"Transition: GETTING_CONFIG, old state: {old_state}")
+        return data
+
+    @model_transition(State.DISCONNECTED, StateType.ENTER)
+    def loading_server(self, old_state: State, data: str):
+        logger.debug(f"Transition: DISCONNECTED, old state: {old_state}")
+        return self.server_db.current
 
     @model_transition(State.DISCONNECTING, StateType.ENTER)
     def disconnecting(self, old_state: State, data):
@@ -60,8 +65,8 @@ class ApplicationModelTransitions:
     def ask_profile(self, old_state: State, data: str):
         logger.debug(f"Transition: ASK_PROFILE, old state: {old_state}")
         cookie, profiles = parse_required_transition(data, get=parse_profiles)
-        set_location = lambda loc: self.common.cookie_reply(cookie, loc)
-        return (set_location, profiles)
+        set_profile = lambda prof: self.common.cookie_reply(cookie, prof)
+        return (set_profile, profiles)
 
     @model_transition(State.ASK_LOCATION, StateType.ENTER)
     def ask_location(self, old_state: State, data):
@@ -83,11 +88,6 @@ class ApplicationModelTransitions:
 
         return (choose_location, self.server_db.secure_internet.locations)
 
-    @model_transition(State.AUTHORIZED, StateType.ENTER)
-    def authorized(self, old_state: State, data: str):
-        logger.debug(f"Transition: AUTHORIZED, old state: {old_state}")
-        return data
-
     @model_transition(State.OAUTH_STARTED, StateType.ENTER)
     def start_oauth(self, old_state: State, url: str):
         logger.debug(f"Transition: OAUTH_STARTED, old state: {old_state}")
@@ -97,7 +97,7 @@ class ApplicationModelTransitions:
     @model_transition(State.GOT_CONFIG, StateType.ENTER)
     def parse_config(self, old_state: State, data):
         logger.debug(f"Transition: GOT_CONFIG, old state: {old_state}")
-        return self.server_db.current
+        return data
 
     @run_in_background_thread("open-browser")
     def open_browser(self, url):
