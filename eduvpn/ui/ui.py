@@ -760,6 +760,7 @@ For detailed information, see the log file located at:
 
     @ui_transition(State.GETTING_CONFIG, StateType.ENTER)
     def enter_chosenServerInformation(self, new_state, data):
+        print("GETTING HIER")
         self.show_loading_page(
             _("Getting a VPN configuration"),
             _("Loading server information..."),

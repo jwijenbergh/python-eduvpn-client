@@ -47,7 +47,7 @@ class ApplicationModelTransitions:
         return data
 
     @model_transition(State.GETTING_CONFIG, StateType.ENTER)
-    def loading_server(self, old_state: State, data: str):
+    def getting_config(self, old_state: State, data: str):
         logger.debug(f"Transition: GETTING_CONFIG, old state: {old_state}")
         return data
 
