@@ -5,7 +5,7 @@ import signal
 import webbrowser
 from typing import Any, Callable, Iterator, Optional, TextIO
 
-from eduvpn_common.main import EduVPN, WrappedError
+from eduvpn_common.main import EduVPN, ServerType, WrappedError
 from eduvpn_common.state import State, StateType
 from eduvpn_common.types import ReadRxBytes
 
@@ -267,7 +267,7 @@ class ApplicationModel:
     def remove(self, server):
         self.common.remove_server(server.category_id, server.identifier)
         # Delete tokens from the keyring
-        self.clear_tokens(server)
+        self.clear_tokens(server.category_id, server.identifier)
         self.common.set_state(State.MAIN)
 
     def connect_get_config(self, server, prefer_tcp: bool = False) -> Config:
@@ -278,10 +278,10 @@ class ApplicationModel:
         )
         return parse_config(config)
 
-    def clear_tokens(self, server):
+    def clear_tokens(self, server_type: int, server_id: str):
         attributes = {
-            "server": server.url,
-            "category": server.category,
+            "server": server_id,
+            "category": str(ServerType(server_type)),
         }
         try:
             cleared = self.keyring.clear(attributes)
@@ -291,12 +291,8 @@ class ApplicationModel:
             logger.debug("Failed clearing tokens with exception")
             logger.debug(e, exc_info=True)
 
-    def load_tokens(self, server: str) -> Optional[str]:
-        server_parsed = parse_current_server(server)
-        if server_parsed is None:
-            logger.warning("Got empty server, not loading tokens")
-            return None
-        attributes = {"server": server_parsed.url, "category": server_parsed.category}
+    def load_tokens(self, server_id: str, server_type: int) -> Optional[str]:
+        attributes = {"server": server_id, "category": str(ServerType(server_type))}
         try:
             tokens_json = self.keyring.load(attributes)
             if tokens_json is None:
@@ -306,7 +302,7 @@ class ApplicationModel:
             d = {
                 "access_token": tokens["access"],
                 "refresh_token": tokens["refresh"],
-                "expires_in": int(tokens["expires"]),
+                "expires": int(tokens["expires"]),
             }
             return json.dumps(d)
         except Exception as e:
@@ -314,12 +310,7 @@ class ApplicationModel:
             logger.debug(e, exc_info=True)
             return None
 
-    def save_tokens(self, server: str, tokens: str):
-        logger.debug("Save tokens called")
-        server_parsed = parse_current_server(server)
-        if server_parsed is None:
-            logger.warning("Got empty server, not saving token to the keyring")
-            return
+    def save_tokens(self, server_id: str, server_type: int, tokens: str):
         tokens_parsed = parse_tokens(tokens)
         if tokens is None or (
             tokens_parsed.access == "" and tokens_parsed.refresh == ""
@@ -330,11 +321,8 @@ class ApplicationModel:
         tokens_dict["access"] = tokens_parsed.access
         tokens_dict["refresh"] = tokens_parsed.refresh
         tokens_dict["expires"] = str(tokens_parsed.expires)
-        attributes = {
-            "server": server_parsed.url,
-            "category": server_parsed.category,
-        }
-        label = f"{server_parsed.url} - OAuth Tokens"
+        attributes = {"server": server_id, "category": str(ServerType(server_type))}
+        label = f"{server_id} - OAuth Tokens"
         try:
             self.keyring.save(label, attributes, json.dumps(tokens_dict))
         except Exception as e:
@@ -404,10 +392,6 @@ class ApplicationModel:
             # Delete the OAuth access and refresh token
             # Start the OAuth authorization flow
             self.common.renew_session()
-            # TODO: should this be done in eduvpn-common?
-            if was_connected:
-                self.common.set_state(State.DISCONNECTING)
-                self.common.set_state(State.DISCONNECTED)
             # Automatically reconnect to the server
             self.activate_connection(callback)
 
@@ -444,12 +428,14 @@ class ApplicationModel:
     def activate_connection(
         self, callback: Optional[Callable] = None, prefer_tcp: bool = False
     ):
-        if not self.common.in_state(State.DISCONNECTED):
+        if not self.common.in_state(State.DISCONNECTED) and not self.common.in_state(State.MAIN):
             if callback:
+                logger.error("invalid state to activate connection")
                 callback(False)
             return
         if not self.current_server:
             if callback:
+                logger.error("failed to get current server")
                 callback(False)
             return
 

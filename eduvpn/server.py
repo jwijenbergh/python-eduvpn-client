@@ -88,10 +88,10 @@ class Server:
     @property
     def category(self) -> str:
         """Return the category of the server as a string
-        :return: The category string, "Custom Server"
+        :return: The category string
         :rtype: str
         """
-        return "Custom Server"
+        return str(self.category_id)
 
 
 class InstituteServer(Server):
@@ -113,17 +113,16 @@ class InstituteServer(Server):
         self.support_contact = support_contact
 
     @property
-    def category(self) -> str:
-        """Return the category of the institute server as a string
-        :return: The category string, "Institute Access Server"
-        :rtype: str
-        """
-        return "Institute Access Server"
-
-    @property
     def category_id(self) -> ServerType:
         return ServerType.INSTITUTE_ACCESS
 
+    @property
+    def category(self) -> str:
+        """Return the category of the server as a string
+        :return: The category string
+        :rtype: str
+        """
+        return str(self.category_id)
 
 class SecureInternetServer(Server):
     """The class that represents a Secure Internet Server
@@ -157,18 +156,11 @@ class SecureInternetServer(Server):
 
     @property
     def category(self) -> str:
-        """Return the category of the secure internet server as a string
-        :return: The category string, "Secure Internet Server"
+        """Return the category of the server as a string
+        :return: The category string
         :rtype: str
         """
-        return "Secure Internet Server"
-
-
-class ServerType(enum.IntEnum):
-    UNKNOWN = 0
-    INSTITUTE_ACCESS = 1
-    SECURE_INTERNET = 2
-    CUSTOM = 3
+        return str(self.category_id)
 
 
 def parse_secure_internet(si: dict) -> Optional[SecureInternetServer]:

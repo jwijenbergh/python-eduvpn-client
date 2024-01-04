@@ -24,7 +24,7 @@ class Token:
         d = {
             "access_token": self.access,
             "refresh_token": self.refresh,
-            "expires_in": self.expires,
+            "expires": self.expires,
         }
 
         return json.dumps(d)
@@ -54,7 +54,7 @@ class Config:
 
 def parse_tokens(tokens_json: str) -> Token:
     jsonT = json.loads(tokens_json)
-    return Token(jsonT["access_token"], jsonT["refresh_token"], jsonT["expires_in"])
+    return Token(jsonT["access_token"], jsonT["refresh_token"], jsonT["expires"])
 
 
 def parse_config(config_json: str) -> Config:
