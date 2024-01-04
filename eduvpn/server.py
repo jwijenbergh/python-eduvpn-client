@@ -239,8 +239,9 @@ def parse_servers(server_json: str) -> List[Server]:
         servers.append(Server(i["identifier"], i["display_name"], profiles))
 
     si = d.get("secure_internet_server", None)
-    if si is not None:
-        si_parsed = parse_secure_internet(si)
+    if si is not None and len(si) > 0:
+        # right now we only support one secure internet server
+        si_parsed = parse_secure_internet(si[0])
         if si_parsed is not None:
             servers.append(si_parsed)
     return servers

@@ -11,11 +11,21 @@ from eduvpn_common.types import ReadRxBytes
 
 from eduvpn import nm
 from eduvpn.config import Configuration
-from eduvpn.connection import (Config, Connection, parse_config, parse_expiry,
-                               parse_tokens)
+from eduvpn.connection import (
+    Config,
+    Connection,
+    parse_config,
+    parse_expiry,
+    parse_tokens,
+)
 from eduvpn.keyring import DBusKeyring, InsecureFileKeyring, TokenKeyring
-from eduvpn.server import (ServerDatabase, parse_current_server, parse_locations,
-                           parse_profiles, parse_required_transition)
+from eduvpn.server import (
+    ServerDatabase,
+    parse_current_server,
+    parse_locations,
+    parse_profiles,
+    parse_required_transition,
+)
 from eduvpn.utils import model_transition, run_in_background_thread
 from eduvpn.variants import ApplicationVariant
 
@@ -352,7 +362,8 @@ class ApplicationModel:
             if success:
                 self.common.set_state(State.CONNECTED)
             else:
-                self.common.set_state(State.GOT_CONFIG)
+                self.common.set_state(State.DISCONNECTING)
+                self.common.set_state(State.DISCONNECTED)
             if callback:
                 callback(success)
 
@@ -360,7 +371,8 @@ class ApplicationModel:
             if success:
                 self.nm_manager.activate_connection(on_connected)
             else:
-                self.common.set_state(State.GOT_CONFIG)
+                self.common.set_state(State.DISCONNECTING)
+                self.common.set_state(State.DISCONNECTED)
                 if callback:
                     callback(False)
 
@@ -394,7 +406,8 @@ class ApplicationModel:
             self.common.renew_session()
             # TODO: should this be done in eduvpn-common?
             if was_connected:
-                self.common.set_state(State.GOT_CONFIG)
+                self.common.set_state(State.DISCONNECTING)
+                self.common.set_state(State.DISCONNECTED)
             # Automatically reconnect to the server
             self.activate_connection(callback)
 
@@ -431,7 +444,7 @@ class ApplicationModel:
     def activate_connection(
         self, callback: Optional[Callable] = None, prefer_tcp: bool = False
     ):
-        if not self.common.in_state(State.GOT_CONFIG):
+        if not self.common.in_state(State.DISCONNECTED):
             if callback:
                 callback(False)
             return
@@ -478,7 +491,7 @@ class ApplicationModel:
         def on_disconnected(success: bool):
             if success:
                 self.cleanup()
-                self.common.set_state(State.GOT_CONFIG)
+                self.common.set_state(State.DISCONNECTED)
                 if callback:
                     callback(True)
             else:
@@ -525,7 +538,7 @@ class Application:
                 if not self.common.in_state(State.CONNECTED):
                     return
                 self.common.set_state(State.DISCONNECTING)
-                self.common.set_state(State.GOT_CONFIG)
+                self.common.set_state(State.DISCONNECTED)
         except Exception:
             return
 

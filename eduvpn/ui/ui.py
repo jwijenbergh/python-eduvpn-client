@@ -32,12 +32,25 @@ from eduvpn.server import StatusImage
 from eduvpn.settings import FLAG_PREFIX, IMAGE_PREFIX
 from eduvpn.ui import search
 from eduvpn.ui.stats import NetworkStats
-from eduvpn.ui.utils import (QUIT_ID, get_validity_text, link_markup,
-                             should_show_error, show_error_dialog,
-                             show_ui_component, style_widget)
-from eduvpn.utils import (ERROR_STATE, get_prefix, get_ui_state, log_exception,
-                          run_in_background_thread, run_in_glib_thread,
-                          run_periodically, ui_transition)
+from eduvpn.ui.utils import (
+    QUIT_ID,
+    get_validity_text,
+    link_markup,
+    should_show_error,
+    show_error_dialog,
+    show_ui_component,
+    style_widget,
+)
+from eduvpn.utils import (
+    ERROR_STATE,
+    get_prefix,
+    get_ui_state,
+    log_exception,
+    run_in_background_thread,
+    run_in_glib_thread,
+    run_periodically,
+    ui_transition,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -509,6 +522,7 @@ For detailed information, see the log file located at:
     def set_connection_switch_state(self, state: bool) -> None:
         self.connection_switch_state = state
         self.connection_switch.set_state(state)
+        self.connection_switch.set_active(state)
 
     def show_page(self, page: Box) -> None:
         """
@@ -623,14 +637,15 @@ For detailed information, see the log file located at:
     # session state transition callbacks
 
     @ui_transition(State.CONNECTING, StateType.ENTER)
-    def enter_connecting(self, old_state: str, data):
+    def enter_connecting(self, old_state: str, server_info):
         self.connection_status_label.set_text(_("Connecting..."))
         self.connection_status_image.set_from_file(StatusImage.CONNECTING.path)
         self.set_connection_switch_state(True)
         # Disable the profile combo box and switch
-        self.connection_switch.set_sensitive(True)
         self.select_profile_combo.set_sensitive(False)
         self.connection_session_label.hide()
+        self.update_connection_server(server_info)
+        self.show_page(self.connection_page)
 
     @ui_transition(State.CONNECTING, StateType.LEAVE)
     def exit_connecting(self, old_state: str, data):
@@ -644,14 +659,12 @@ For detailed information, see the log file located at:
         self.connection_status_image.set_from_file(StatusImage.CONNECTING.path)
         self.set_connection_switch_state(False)
         # Disable the profile combo box and switch
-        self.connection_switch.set_sensitive(False)
         self.select_profile_combo.set_sensitive(False)
         self.connection_session_label.hide()
 
     @ui_transition(State.DISCONNECTING, StateType.LEAVE)
     def exit_disconnecting(self, old_state: str, data):
         # Re-enable the profile combo box and switch
-        self.connection_switch.set_sensitive(True)
         self.select_profile_combo.set_sensitive(True)
         self.connection_session_label.hide()
 
@@ -682,7 +695,6 @@ For detailed information, see the log file located at:
         self.find_server_search_input.grab_focus()
         search.show_result_components(self, True)
         search.show_search_components(self, True)
-        print(self.app.model.server_db.disco)
         search.update_results(self, self.app.model.server_db.disco)
         search.init_server_search(self)
 
@@ -760,7 +772,6 @@ For detailed information, see the log file located at:
 
     @ui_transition(State.GETTING_CONFIG, StateType.ENTER)
     def enter_chosenServerInformation(self, new_state, data):
-        print("GETTING HIER")
         self.show_loading_page(
             _("Getting a VPN configuration"),
             _("Loading server information..."),
@@ -875,7 +886,6 @@ For detailed information, see the log file located at:
         # In this screen we want no loading pages
         self.disable_loading_page = True
         self.renew_session_button.hide()
-        self.connection_switch.set_sensitive(True)
 
     @ui_transition(State.DISCONNECTED, StateType.LEAVE)
     def exit_ConnectionStatus(self, old_state, new_state):
@@ -1141,16 +1151,32 @@ For detailed information, see the log file located at:
         if state is not self.connection_switch_state:
             self.connection_switch_state = state
 
+            @run_in_glib_thread
+            def on_switch_on(success: bool):
+                if success:
+                    self.update_connection_status(True)
+                    return
+                self.update_connection_status(False)
+                self.show_error_revealer("failed to activate connection")
+
+            @run_in_glib_thread
+            def on_switch_off(success: bool):
+                if success:
+                    self.update_connection_status(False)
+                    return
+                self.update_connection_status(True)
+                self.show_error_revealer("failed to deactivate connection")
+
             # Cancel everything if something was in progress
             # We return if something from NM was canceled
             def on_canceled():
                 # The user has toggled the connection switch,
                 # as opposed to the ui itself setting it.
                 if state:
-                    self.call_model("activate_connection")
+                    self.call_model("activate_connection", on_switch_on)
                 else:
                     self.stop_connection_info()
-                    self.call_model("deactivate_connection")
+                    self.call_model("deactivate_connection", on_switch_off)
 
             self.call_model("cancel", callback=on_canceled)
         return True
@@ -1305,7 +1331,13 @@ For detailed information, see the log file located at:
     def on_renew_session_clicked(self, event):
         logger.debug("clicked on renew session")
 
-        self.call_model("renew_session")
+        def on_renew(success: bool):
+            if success:
+                return
+            self.update_connection_status(False)
+            self.show_error_revealer(f"failed to renew session")
+
+        self.call_model("renew_session", on_renew)
 
     def on_reconnect_tcp_clicked(self, event):
         logger.debug("clicked on reconnect TCP")
