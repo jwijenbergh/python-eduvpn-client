@@ -279,7 +279,9 @@ class ServerDatabase:
     def disco_update(self):
         if not self.enable_discovery:
             return
-        disco_orgs = parse_disco_organizations(self.wrapper.get_disco_organizations())
+        disco_orgs = []
+        if self.secure_internet is None:
+            disco_orgs = parse_disco_organizations(self.wrapper.get_disco_organizations())
         disco_servers = parse_disco_servers(self.wrapper.get_disco_servers())
         all_servers = disco_orgs
         all_servers.extend(disco_servers)

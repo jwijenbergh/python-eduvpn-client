@@ -693,6 +693,19 @@ For detailed information, see the log file located at:
 
         update_results()
 
+    @property
+    def can_disable_secure_internet(self) -> bool:
+        # We are not searching a server
+        # We can thus not disable the secure internet view unconditionally
+        if not self.is_searching_server:
+            return False
+
+        # A server is not available, we need to show the list
+        if self.app.model.server_db.secure_internet is None:
+            return False
+
+        return True
+
     def enter_search(self, data):
         self.is_searching_server = True
         self.show_back_button(not data)

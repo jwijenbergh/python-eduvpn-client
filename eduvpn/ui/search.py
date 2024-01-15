@@ -104,6 +104,10 @@ def show_group_tree(window: "EduVpnGtkWindow", group: ServerGroup, show: bool) -
     """
     Set the visibility of the tree of result for a server type.
     """
+    # Hide secure internet list if a server is already available
+    if group == ServerGroup.SECURE_INTERNET and window.can_disable_secure_internet:
+        show = False
+
     scroll_component_name = group_scroll_component[group]
     scroll_component = getattr(window, scroll_component_name)
     show_ui_component(scroll_component, show)
