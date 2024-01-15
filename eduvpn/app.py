@@ -248,11 +248,12 @@ class ApplicationModel:
             callback(False)
             return
 
-    def change_secure_location(self):
-        # get secure location server
+    def change_secure_location(self, country_code: str):
         server = self.server_db.secure_internet
-
-        self.common.set_state(State.ASK_LOCATION)
+        if server.country_code == country_code:
+            return
+        self.common.set_secure_location(server.org_id, country_code)
+        self.common.set_state(State.MAIN)
 
     def go_back(self):
         self.cancel()

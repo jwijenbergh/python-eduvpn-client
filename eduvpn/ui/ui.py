@@ -207,7 +207,14 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
 
         self.choose_profile_page = builder.get_object("chooseProfilePage")
         self.choose_location_page = builder.get_object("chooseLocationPage")
-        self.change_location_button = builder.get_object("changeLocationButton")
+        self.change_location_combo = builder.get_object("changeLocationCombo")
+        location_renderer_flag = Gtk.CellRendererPixbuf()
+        self.change_location_combo.pack_start(location_renderer_flag, False)
+        self.change_location_combo.add_attribute(location_renderer_flag, "pixbuf", 0)
+        location_renderer_text = Gtk.CellRendererText()
+        location_renderer_text.set_property("xpad", 5)
+        self.change_location_combo.pack_start(location_renderer_text, True)
+        self.change_location_combo.add_attribute(location_renderer_text, "text", 1)
         self.location_list = builder.get_object("locationTreeView")
         self.profile_list = builder.get_object("profileTreeView")
 
@@ -691,7 +698,7 @@ For detailed information, see the log file located at:
         self.show_back_button(not data)
         self.set_search_text("")
         self.add_other_server_button_container.hide()
-        self.change_location_button.hide()
+        self.change_location_combo.hide()
         self.find_server_search_input.grab_focus()
         search.show_result_components(self, True)
         search.show_search_components(self, True)
@@ -713,14 +720,36 @@ For detailed information, see the log file located at:
         if not self.app.variant.use_predefined_servers:
             self.add_custom_server_button_container.hide()
 
+    def fill_secure_location_combo(self, curr, locs):
+        locs_store = Gtk.ListStore(GdkPixbuf.Pixbuf, GObject.TYPE_STRING, GObject.TYPE_STRING)
+        active_loc = 0
+        sorted_locs = sorted(locs, key=lambda x : retrieve_country_name(x))
+        index = 0
+        for loc in sorted_locs:
+            if loc == curr:
+                active_loc = index
+            flag_path = get_flag_path(loc)
+            pixbuf = None
+            if flag_path:
+                pixbuf = GdkPixbuf.Pixbuf.new_from_file(flag_path)
+            locs_store.append([pixbuf, retrieve_country_name(loc), loc])
+            index += 1
+        self.change_location_combo.set_model(locs_store)
+        self.change_location_combo.set_active(active_loc)
+
     @ui_transition(State.MAIN, StateType.ENTER)
     def enter_MainState(self, old_state: str, servers):
         self.disable_loading_page = False
         search.show_result_components(self, True)
         self.add_other_server_button_container.show()
         search.init_server_search(self)
+
+        secure = self.app.model.server_db.secure_internet
+        if secure:
+            self.fill_secure_location_combo(secure.country_code, secure.locations)
+            self.change_location_combo.show()
+
         search.update_results(self, servers)
-        self.change_location_button.show()
 
         # Do not go in a loop by checking old state
         if not servers:
@@ -747,7 +776,7 @@ For detailed information, see the log file located at:
         search.show_result_components(self, False)
         self.add_other_server_button_container.hide()
         search.exit_server_search(self)
-        self.change_location_button.hide()
+        self.change_location_combo.hide()
 
     @ui_transition(State.OAUTH_STARTED, StateType.ENTER)
     def enter_oauth_setup(self, old_state, url):
@@ -1129,10 +1158,17 @@ For detailed information, see the log file located at:
 
         self.call_model("cancel")
 
-    def on_change_location(self, _):
-        logger.debug("on change location")
+    def on_change_location(self, combo):
+        tree_iter = combo.get_active_iter()
 
-        self.call_model("change_secure_location")
+        if tree_iter is None:
+            return
+
+        model = combo.get_model()
+        _loc_flag, _loc_display, location = model[tree_iter][:3]
+
+        # Set profile and connect
+        self.call_model("change_secure_location", location)
 
     def on_search_changed(self, _: Optional[SearchEntry] = None) -> None:
         query = self.find_server_search_input.get_text()
