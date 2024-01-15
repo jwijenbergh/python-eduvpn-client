@@ -219,10 +219,10 @@ def parse_servers(server_json: str) -> List[Server]:
     institutes = d.get("institute_access_servers", [])
     servers = []
     for i in institutes:
-        # TODO: support contact and delisted
+        # TODO: delisted
         profiles = parse_profiles(i["profiles"])
         servers.append(
-            InstituteServer(i["identifier"], i["display_name"], [], profiles)
+            InstituteServer(i["identifier"], i["display_name"], i.get("support_contacts", []), profiles)
         )
 
     customs = d.get("custom_servers", [])
@@ -231,9 +231,9 @@ def parse_servers(server_json: str) -> List[Server]:
         servers.append(Server(i["identifier"], i["display_name"], profiles))
 
     si = d.get("secure_internet_server", None)
-    if si is not None and len(si) > 0:
+    if si is not None:
         # right now we only support one secure internet server
-        si_parsed = parse_secure_internet(si[0])
+        si_parsed = parse_secure_internet(si)
         if si_parsed is not None:
             servers.append(si_parsed)
     return servers
