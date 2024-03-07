@@ -219,7 +219,7 @@ class NMManager:
             return "OpenVPN"
         elif type == "wireguard":
             if self.proxy:
-                return "WireGuard (Proxy)"
+                return "WireGuard (Proxyguard)"
             return "WireGuard"
         return None
 
@@ -570,7 +570,6 @@ class NMManager:
         # priority 1 not fwmark fwmarknum table fwmarknum
 
         prios = self.get_priorities(proxy is not None, allow_wg_lan)
-        dport_proxy = proxy.peer_port
         for ipver, family, setting in rules:
             rule = NM.IPRoutingRule.new(family)
             rule.set_priority(prios[0])
@@ -581,6 +580,7 @@ class NMManager:
             setting.add_routing_rule(rule)
 
             if proxy:
+                dport_proxy = proxy.peer_port
                 for proxy_peer_ip in proxy_peer_ips:
                     address = ip_address(proxy_peer_ip)
                     if address.version != ipver:
