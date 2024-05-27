@@ -20,10 +20,10 @@ from functools import partial
 from eduvpn_common import __version__ as commonver
 from eduvpn_common.state import State, StateType
 from gi.overrides.Gdk import Event, EventButton  # type: ignore
-from gi.overrides.Gtk import (  # type: ignore[import-untyped]
+from gi.overrides.Gtk import (
     Box,
     Builder,  # type: ignore[import-untyped]
-    Button,
+    Button,  # type: ignore[import-untyped]
     TreePath,  # type: ignore
     TreeView,
     TreeViewColumn,
